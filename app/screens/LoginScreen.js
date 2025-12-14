@@ -27,7 +27,7 @@ export default function LoginScreen() {
     }
 
     // Temporary mock authentication (replace with real DB or Firebase later)
-    if (email === "user@example.com" && password === "Password123!") {
+    if (email === "user1" && password === "password") {
       Alert.alert("Success", "Login successful!");
       router.replace('/tabs');
     } else {
