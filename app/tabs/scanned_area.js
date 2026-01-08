@@ -1,5 +1,6 @@
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { useCallback, useEffect, useRef } from "react";
+import * as Location from "expo-location";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
     Animated,
     Dimensions,
@@ -10,7 +11,8 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import MapView from "react-native-maps";
+import MapView, { Marker } from "react-native-maps";
+import { useMap } from "../../context/MapContext";
 
 const { height } = Dimensions.get("window");
 
@@ -68,22 +70,54 @@ const SAMPLE_SCANNED_AREAS = [
 
 export default function ScannedAreaScreen() {
   const scrollRef = useRef(null);
+  const isAtTop = useRef(true);
   const navigation = useNavigation();
   const slideAnimation = useRef(new Animated.Value(height)).current;
   const panResponder = useRef(null);
+  const mapRef = useRef(null);
+  const [location, setLocation] = useState(null);
+  const { mapRegion, setMapRegion, initialRegion } = useMap();
 
   const handleAreaSelect = (area) => {
-    // Navigate to details tab and pass the selected area
-    navigation.navigate("details", { selectedArea: area });
+    // Navigate to details tab using jumpTo for tab navigation
+    navigation.jumpTo("details", { selectedArea: area });
   };
+
+  useEffect(() => {
+    const getLocation = async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") {
+          console.log("Permission to access location was denied");
+          return;
+        }
+
+        const currentLocation = await Location.getCurrentPositionAsync({});
+        const { latitude, longitude } = currentLocation.coords;
+
+        setLocation({
+          latitude,
+          longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+      } catch (error) {
+        console.error("Error getting location:", error);
+      }
+    };
+
+    getLocation();
+  }, []);
 
   // Set up pan responder for drag-to-dismiss on drag handle only
   useEffect(() => {
     panResponder.current = PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
+      // Always be ready to handle touch on drag handle
+      onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (evt, gestureState) => {
-        // Only activate on vertical drag gestures
-        return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 5;
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 5;
+        // Take over when dragging downwards and the ScrollView is at top
+        return vertical && gestureState.dy > 0 && isAtTop.current;
       },
       onPanResponderMove: (evt, gestureState) => {
         if (gestureState.dy > 0) {
@@ -91,14 +125,13 @@ export default function ScannedAreaScreen() {
         }
       },
       onPanResponderRelease: (evt, gestureState) => {
-        if (gestureState.dy > 100) {
-          // Drag down more than 100px to dismiss
+        if (gestureState.dy > 200) {
+          // Drag down enough to dismiss
           Animated.timing(slideAnimation, {
             toValue: height,
             duration: 300,
             useNativeDriver: false,
           }).start(() => {
-            // Navigate to home after animation completes
             navigation.navigate("home");
           });
         } else {
@@ -131,24 +164,48 @@ export default function ScannedAreaScreen() {
         useNativeDriver: false,
       }).start();
       
+      // Sync map with home screen's map region
+      if (mapRef.current && mapRegion) {
+        mapRef.current.animateToRegion(mapRegion, 300);
+      }
+      
       setTimeout(() => {
         scrollRef.current?.scrollTo({ y: 0, animated: true });
       }, 300);
-    }, [slideAnimation])
+    }, [slideAnimation, mapRegion])
   );
 
   return (
     <View style={styles.container}>
       <MapView
+        ref={mapRef}
         style={styles.map}
-        initialRegion={{
-          latitude: 8.482,
-          longitude: 124.647,
-          latitudeDelta: 0.5,
-          longitudeDelta: 0.5,
-        }}
+        initialRegion={mapRegion || initialRegion}
         mapType="hybrid"
-      />
+        showsUserLocation={true}
+      >
+        {/* Display user's current location */}
+        {location && (
+          <Marker
+            coordinate={{ latitude: location.latitude, longitude: location.longitude }}
+            title="Your Location"
+            description="Current device location"
+            pinColor="blue"
+          />
+        )}
+
+        {/* Display sample scanned areas */}
+        {SAMPLE_SCANNED_AREAS.map((area) => (
+          <Marker
+            key={area.id}
+            coordinate={{ latitude: area.latitude, longitude: area.longitude }}
+            title={area.title}
+            description={area.description}
+            pinColor="green"
+            onPress={() => navigation.jumpTo("details", { selectedArea: area })}
+          />
+        ))}
+      </MapView>
 
       {/* Animated Bottom Sheet - Location Selector */}
       <Animated.View
@@ -158,14 +215,24 @@ export default function ScannedAreaScreen() {
             transform: [{ translateY: slideAnimation }],
           },
         ]}
-        {...panResponder.current?.panHandlers}
-      >
+          {...panResponder.current?.panHandlers}
+        >
         <ScrollView
           ref={scrollRef}
           style={styles.bottomSheetContent}
-          showsVerticalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled={true}
+              scrollEventThrottle={16}
+              scrollEnabled={isAtTop.current}
+              onScroll={(e) => {
+                const y = e.nativeEvent.contentOffset.y || 0;
+                isAtTop.current = y <= 0;
+              }}
+              contentContainerStyle={{ paddingBottom: 20 }}
         >
-          <View style={styles.dragHandle} />
+              <View style={styles.dragHandleContainer} {...panResponder.current?.panHandlers}>
+                <View style={styles.dragHandle} />
+              </View>
 
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Select Scanned Area</Text>
@@ -239,6 +306,10 @@ const styles = StyleSheet.create({
   bottomSheetContent: {
     flex: 1,
     paddingHorizontal: 16,
+  },
+  dragHandleContainer: {
+    alignItems: "center",
+    paddingVertical: 10,
   },
   dragHandle: {
     width: 40,

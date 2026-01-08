@@ -13,7 +13,7 @@ import {
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
@@ -21,7 +21,7 @@ export default function RegisterScreen() {
 
   const handleRegister = () => {
     // Simple field validation
-    if (!email.trim() || !password.trim() || !confirmPassword.trim()) {
+    if (!username.trim() || !password.trim() || !confirmPassword.trim()) {
       Alert.alert('Missing Fields', 'Please fill in all fields.');
       return;
     }
@@ -53,16 +53,15 @@ export default function RegisterScreen() {
 
       <Text style={styles.title}>Sign up</Text>
 
-      {/* Email Field */}
-      <Text style={styles.label}>Email</Text>
+      {/* Username Field */}
+      <Text style={styles.label}>Username</Text>
       <TextInput
         style={styles.input}
-        placeholder="example@gmail.com"
+        placeholder="Enter your username"
         placeholderTextColor="#9CA3AF"
-        keyboardType="email-address"
         autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
+        value={username}
+        onChangeText={setUsername}
       />
 
       {/* Password Field */}
@@ -110,24 +109,9 @@ export default function RegisterScreen() {
         <Text style={styles.registerText}>Create Account</Text>
       </TouchableOpacity>
 
-      {/* Divider */}
+        {/* Divider */}
       <View style={styles.dividerContainer}>
         <View style={styles.line} />
-        <Text style={styles.dividerText}>Or Register with</Text>
-        <View style={styles.line} />
-      </View>
-
-      {/* Social Buttons */}
-      <View style={styles.socialContainer}>
-        <TouchableOpacity style={styles.socialButton}>
-          <Ionicons name="logo-facebook" size={22} color="#1877F2" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.socialButton}>
-          <Ionicons name="logo-google" size={22} color="#1b5333ff" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.socialButton}>
-          <Ionicons name="logo-apple" size={22} color="#000000" />
-        </TouchableOpacity>
       </View>
 
       {/* Already have an account */}
@@ -217,23 +201,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 1,
     backgroundColor: '#E5E7EB',
-  },
-  dividerText: {
-    marginHorizontal: 10,
-    color: '#6B7280',
-    fontSize: 13,
-  },
-  socialContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 15,
-    marginBottom: 30,
-  },
-  socialButton: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    padding: 12,
   },
   footerText: {
     textAlign: 'center',

@@ -3,6 +3,7 @@ import * as Location from "expo-location";
 import { useEffect, useRef, useState } from "react";
 import { Dimensions, StyleSheet, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
+import { useMap } from "../../context/MapContext";
 
 // Sample scanned areas
 const SAMPLE_SCANNED_AREAS = [
@@ -60,6 +61,7 @@ export default function HomeScreen() {
   const [location, setLocation] = useState(null);
   const mapRef = useRef(null);
   const navigation = useNavigation();
+  const { mapRef: contextMapRef, mapRegion, setMapRegion, initialRegion } = useMap();
 
   useEffect(() => {
     const getLocation = async () => {
@@ -80,13 +82,15 @@ export default function HomeScreen() {
           longitudeDelta: 0.05,
         });
 
-        // Center map on current location
-        mapRef.current?.animateToRegion({
-          latitude,
-          longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        });
+        // Only animate to location on first load if no saved map region
+        if (!mapRegion && mapRef.current) {
+          mapRef.current?.animateToRegion({
+            latitude,
+            longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          });
+        }
       } catch (error) {
         console.error("Error getting location:", error);
       }
@@ -95,11 +99,15 @@ export default function HomeScreen() {
     getLocation();
   }, []);
 
-  const initialRegion = location || {
+  const initialRegionState = location || {
     latitude: 8.482,
     longitude: 124.647,
     latitudeDelta: 0.5,
     longitudeDelta: 0.5,
+  };
+
+  const handleRegionChange = (region) => {
+    setMapRegion(region);
   };
 
   return (
@@ -107,9 +115,10 @@ export default function HomeScreen() {
       <MapView
         ref={mapRef}
         style={styles.map}
-        initialRegion={initialRegion}
+        initialRegion={mapRegion || initialRegionState}
         mapType="hybrid"
         showsUserLocation={true}
+        onRegionChange={handleRegionChange}
       >
         {/* Display user's current location */}
         {location && (
@@ -129,7 +138,7 @@ export default function HomeScreen() {
             title={area.title}
             description={area.description}
             pinColor="green"
-            onPress={() => navigation.navigate("scanned_area")}
+            onPress={() => navigation.jumpTo("details", { selectedArea: area })}
           />
         ))}
       </MapView>

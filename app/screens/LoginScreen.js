@@ -14,24 +14,24 @@ import {
 } from 'react-native';
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
   const router = useRouter();
 
   const handleLogin = () => {
     // Basic validation
-    if (!email.trim() || !password.trim()) {
-      Alert.alert("Missing Fields", "Please enter both email and password.");
+    if (!username.trim() || !password.trim()) {
+      Alert.alert("Missing Fields", "Please enter both username and password.");
       return;
     }
 
     // Temporary mock authentication (replace with real DB or Firebase later)
-    if (email === "user1" && password === "password") {
+    if (username === "user" && password === "password") {
       Alert.alert("Success", "Login successful!");
       router.replace('/tabs');
     } else {
-      Alert.alert("Invalid Credentials", "Incorrect email or password.");
+      Alert.alert("Invalid Credentials", "Incorrect username or password.");
     }
   };
 
@@ -46,16 +46,15 @@ export default function LoginScreen() {
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <Text style={styles.title}>Log in</Text>
 
-        {/* Email Field */}
-        <Text style={styles.label}>Email</Text>
+        {/* Username Field */}
+        <Text style={styles.label}>Username</Text>
         <TextInput
           style={styles.input}
-          placeholder="example@gmail.com"
+          placeholder="Enter your username"
           placeholderTextColor="#9CA3AF"
-          keyboardType="email-address"
           autoCapitalize="none"
-          value={email}
-          onChangeText={setEmail}
+          value={username}
+          onChangeText={setUsername}
         />
 
         {/* Password Field */}
@@ -94,21 +93,6 @@ export default function LoginScreen() {
         {/* Divider */}
         <View style={styles.dividerContainer}>
           <View style={styles.line} />
-          <Text style={styles.dividerText}>Or Login with</Text>
-          <View style={styles.line} />
-        </View>
-
-        {/* Social Buttons */}
-        <View style={styles.socialContainer}>
-          <TouchableOpacity style={styles.socialButton}>
-            <Ionicons name="logo-facebook" size={22} color="#1877F2" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.socialButton}>
-            <Ionicons name="logo-google" size={22} color="#1D503A" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.socialButton}>
-            <Ionicons name="logo-apple" size={22} color="#000000" />
-          </TouchableOpacity>
         </View>
 
         {/* Register Redirect */}

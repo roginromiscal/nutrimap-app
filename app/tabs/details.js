@@ -1,6 +1,6 @@
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import * as Location from "expo-location";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -13,9 +13,61 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
+import { useMap } from "../../context/MapContext";
 
 const { height } = Dimensions.get("window");
-const SHEET_HEIGHT = height * 0.7;
+
+// Sample scanned areas with soil data
+const SAMPLE_SCANNED_AREAS = [
+  {
+    id: 1,
+    latitude: 8.475,
+    longitude: 124.640,
+    title: "Farm Area 1",
+    description: "Corn field",
+    dateScanned: "09/12/2025",
+    coordinates: "8.475, 124.640",
+    nitrogen: 70,
+    phosphorus: 55,
+    potassium: 75,
+    moisture: 65,
+    temperature: 28,
+    cropRecommendation: "Corn",
+    cropDescription: "Suitable due to enough nitrogen level",
+  },
+  {
+    id: 2,
+    latitude: 8.485,
+    longitude: 124.655,
+    title: "Farm Area 2",
+    description: "Rice paddy",
+    dateScanned: "08/12/2025",
+    coordinates: "8.485, 124.655",
+    nitrogen: 60,
+    phosphorus: 65,
+    potassium: 70,
+    moisture: 75,
+    temperature: 26,
+    cropRecommendation: "Rice",
+    cropDescription: "Perfect conditions for rice cultivation",
+  },
+  {
+    id: 3,
+    latitude: 8.480,
+    longitude: 124.630,
+    title: "Farm Area 3",
+    description: "Vegetable garden",
+    dateScanned: "10/12/2025",
+    coordinates: "8.480, 124.630",
+    nitrogen: 80,
+    phosphorus: 70,
+    potassium: 65,
+    moisture: 80,
+    temperature: 29,
+    cropRecommendation: "Vegetables",
+    cropDescription: "High nitrogen perfect for leafy vegetables",
+  },
+];
 
 export default function DetailsScreen() {
   const [location, setLocation] = useState(null);
@@ -24,7 +76,10 @@ export default function DetailsScreen() {
   const mapRef = useRef(null);
   const slideAnimation = useRef(new Animated.Value(height)).current;
   const panResponder = useRef(null);
+  const scrollRef = useRef(null);
+  const isAtTop = useRef(true);
   const navigation = useNavigation();
+  const { mapRegion, setMapRegion, initialRegion } = useMap();
 
   // Get selected area from route params when navigating from scanned_area
   useEffect(() => {
@@ -52,12 +107,15 @@ export default function DetailsScreen() {
           longitudeDelta: 0.05,
         });
 
-        mapRef.current?.animateToRegion({
-          latitude,
-          longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        });
+        // Only animate to location on first load if no saved map region
+        if (!mapRegion && mapRef.current) {
+          mapRef.current?.animateToRegion({
+            latitude,
+            longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          });
+        }
       } catch (error) {
         console.error("Error getting location:", error);
       }
@@ -69,10 +127,11 @@ export default function DetailsScreen() {
   // Set up pan responder for drag-to-dismiss
   useEffect(() => {
     panResponder.current = PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (evt, gestureState) => {
-        // Only activate on vertical drag gestures
-        return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 5;
+        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 5;
+        // Only activate when dragging downwards and ScrollView is at top
+        return vertical && gestureState.dy > 0 && isAtTop.current;
       },
       onPanResponderMove: (evt, gestureState) => {
         if (gestureState.dy > 0) {
@@ -80,18 +139,15 @@ export default function DetailsScreen() {
         }
       },
       onPanResponderRelease: (evt, gestureState) => {
-        if (gestureState.dy > 100) {
-          // Drag down more than 100px to dismiss
+        if (gestureState.dy > 200) {
           Animated.timing(slideAnimation, {
             toValue: height,
             duration: 300,
             useNativeDriver: false,
           }).start(() => {
-            // Navigate to scanned_area after animation completes
-            navigation.navigate("scanned_area");
+            navigation.navigate("home");
           });
         } else {
-          // Snap back to top
           Animated.timing(slideAnimation, {
             toValue: 0,
             duration: 300,
@@ -111,11 +167,37 @@ export default function DetailsScreen() {
     }).start();
   }, []);
 
-  const initialRegion = location || {
+  // Reset animation when screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      slideAnimation.setValue(0);
+      Animated.timing(slideAnimation, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: false,
+      }).start();
+      
+      // Sync map with home screen's map region
+      if (mapRef.current && mapRegion) {
+        mapRef.current.animateToRegion(mapRegion, 300);
+      }
+      
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: true });
+      }, 300);
+    }, [slideAnimation, mapRegion])
+  );
+
+  const initialRegionState = location || {
     latitude: 8.482,
     longitude: 124.647,
     latitudeDelta: 0.5,
     longitudeDelta: 0.5,
+  };
+
+  const handleRegionChange = (region) => {
+    // Don't update global map state - only use local state for this screen
+    // This prevents the map from changing when navigating between tabs
   };
 
   return (
@@ -123,17 +205,32 @@ export default function DetailsScreen() {
       <MapView
         ref={mapRef}
         style={styles.map}
-        initialRegion={initialRegion}
+        initialRegion={mapRegion || initialRegionState}
         mapType="hybrid"
         showsUserLocation={true}
+        onRegionChange={handleRegionChange}
       >
+        {/* Display user's current location */}
         {location && (
           <Marker
             coordinate={{ latitude: location.latitude, longitude: location.longitude }}
             title="Your Location"
             description="Current device location"
+            pinColor="blue"
           />
         )}
+
+        {/* Display sample scanned areas */}
+        {SAMPLE_SCANNED_AREAS.map((area) => (
+          <Marker
+            key={area.id}
+            coordinate={{ latitude: area.latitude, longitude: area.longitude }}
+            title={area.title}
+            description={area.description}
+            pinColor="green"
+            onPress={() => setSelectedArea(area)}
+          />
+        ))}
       </MapView>
 
       {/* Animated Bottom Sheet */}
@@ -146,8 +243,19 @@ export default function DetailsScreen() {
         ]}
         {...panResponder.current?.panHandlers}
       >
-        <ScrollView style={styles.bottomSheetContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.dragHandle} />
+        <ScrollView
+          ref={scrollRef}
+          style={styles.bottomSheetContent}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(e) => {
+            const y = e.nativeEvent.contentOffset.y || 0;
+            isAtTop.current = y <= 0;
+          }}
+        >
+          <View style={styles.dragHandleContainer} {...panResponder.current?.panHandlers}>
+            <View style={styles.dragHandle} />
+          </View>
           
           {selectedArea ? (
             // Land Area Details View
@@ -304,7 +412,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: SHEET_HEIGHT,
+    height: height * 0.7,
     backgroundColor: "white",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -316,6 +424,10 @@ const styles = StyleSheet.create({
   bottomSheetContent: {
     flex: 1,
     paddingHorizontal: 16,
+  },
+  dragHandleContainer: {
+    alignItems: "center",
+    paddingVertical: 10,
   },
   dragHandle: {
     width: 40,
