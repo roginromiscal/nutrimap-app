@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { StyleSheet, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
-import { MapProvider, useMap } from "../../context/MapContext";
 
 const SAMPLE_SCANNED_AREAS = [
   {

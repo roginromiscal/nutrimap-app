@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
-import { useMap } from "../../context/MapContext";
+
 
 const { height } = Dimensions.get("window");
 
@@ -73,13 +73,13 @@ export default function DetailsScreen() {
   const [location, setLocation] = useState(null);
   const [selectedArea, setSelectedArea] = useState(null);
   const route = useRoute();
-  const mapRef = useRef(null);
   const slideAnimation = useRef(new Animated.Value(height)).current;
   const panResponder = useRef(null);
   const scrollRef = useRef(null);
   const isAtTop = useRef(true);
   const navigation = useNavigation();
-  const { mapRegion, setMapRegion, initialRegion } = useMap();
+  const { mapRef: contextMapRef, mapRegion, setMapRegion, initialRegion } = useMap();
+  const mapRef = contextMapRef;
 
   // Get selected area from route params when navigating from scanned_area
   useEffect(() => {
@@ -177,15 +177,10 @@ export default function DetailsScreen() {
         useNativeDriver: false,
       }).start();
       
-      // Sync map with home screen's map region
-      if (mapRef.current && mapRegion) {
-        mapRef.current.animateToRegion(mapRegion, 300);
-      }
-      
       setTimeout(() => {
         scrollRef.current?.scrollTo({ y: 0, animated: true });
       }, 300);
-    }, [slideAnimation, mapRegion])
+    }, [slideAnimation])
   );
 
   const initialRegionState = location || {
@@ -196,8 +191,7 @@ export default function DetailsScreen() {
   };
 
   const handleRegionChange = (region) => {
-    // Don't update global map state - only use local state for this screen
-    // This prevents the map from changing when navigating between tabs
+    setMapRegion(region);
   };
 
   return (
