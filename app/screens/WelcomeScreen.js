@@ -8,23 +8,24 @@ export default function WelcomeScreen() {
         source={require('../../assets/images/nutrimap-logo.png')}
         style={styles.logo}
       />
+
       <Text style={styles.title}>Explore Nutrimap</Text>
       <Text style={styles.subtitle}>
         Soil insights and crop tips right at your fingertips
       </Text>
 
       <TouchableOpacity
-        style={styles.loginButton}
+        style={[styles.buttonBase, styles.loginButton]}
         onPress={() => router.push('/screens/LoginScreen')}
       >
-        <Text style={styles.loginText}>Sign In</Text>
+        <Text style={styles.loginText}>Login</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={styles.signupButton}
+        style={[styles.buttonBase, styles.signupButton]}
         onPress={() => router.push('/screens/RegisterScreen')}
       >
-        <Text style={styles.signupText}>Create account</Text>
+        <Text style={styles.signupText}>Sign up</Text>
       </TouchableOpacity>
     </View>
   );
@@ -56,29 +57,33 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 100,
   },
+
+  /* ✅ Shared button size */
+  buttonBase: {
+    width: 260,          // SAME width for both
+    paddingVertical: 14, // SAME height for both
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+
   loginButton: {
     backgroundColor: '#1D503A',
-    paddingVertical: 14,
-    paddingHorizontal: 100,
-    borderRadius: 10,
-    marginBottom: 30,
-    borderWidth: 0,
-    alignItems: 'center',
   },
+
   signupButton: {
     backgroundColor: '#ffffff',
-    paddingVertical: 14,
-    paddingHorizontal: 70,
-    borderRadius: 10,
     borderWidth: 2,
     borderColor: '#1D503A',
-    alignItems: 'center',
+    marginBottom: 0,
   },
+
   loginText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
+
   signupText: {
     color: '#000000',
     fontSize: 16,

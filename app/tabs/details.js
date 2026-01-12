@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
+import { useMap } from "./map-context";
 
 
 const { height } = Dimensions.get("window");

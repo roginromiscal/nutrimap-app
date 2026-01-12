@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from "expo-router";
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -13,51 +13,99 @@ import {
   View,
 } from 'react-native';
 
+import { onAuthStateChanged, signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../../firebaseConfig"; // adjust path if needed
+
 export default function LoginScreen() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+
   const router = useRouter();
 
-  const handleLogin = () => {
-    // Basic validation
-    if (!username.trim() || !password.trim()) {
-      Alert.alert("Missing Fields", "Please enter both username and password.");
+  // ✅ Auto-login if user is already authenticated (works offline)
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        router.replace('/tabs');
+      }
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const handleLogin = async () => {
+    const cleanEmail = email.replace(/\s+/g, '');
+
+    if (!cleanEmail || !password.trim()) {
+      Alert.alert("Missing Fields", "Please enter both email and password.");
       return;
     }
 
-    // Temporary mock authentication (replace with real DB or Firebase later)
-    if (username === "user" && password === "password") {
+    try {
+      setLoading(true);
+
+      await signInWithEmailAndPassword(auth, cleanEmail, password);
+
       Alert.alert("Success", "Login successful!");
       router.replace('/tabs');
-    } else {
-      Alert.alert("Invalid Credentials", "Incorrect username or password.");
+
+    } catch (error) {
+      let message = "Login failed. Please try again.";
+
+      if (error.code === "auth/user-not-found") {
+        message = "No account found with this email.";
+      } else if (error.code === "auth/wrong-password") {
+        message = "Incorrect password.";
+      } else if (error.code === "auth/invalid-email") {
+        message = "Invalid email format.";
+      } else if (error.code === "auth/network-request-failed") {
+        message =
+          "No internet connection. Please connect at least once to log in.";
+      }
+
+      Alert.alert("Login Error", message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Logo at top-right */}
-      <Image
-        source={require('../../assets/images/nutrimap-logo.png')}
-        style={styles.logo}
-      />
+
+      {/* ✅ Clickable Logo → Welcome Screen */}
+      <TouchableOpacity
+        style={styles.logoTouchable}
+        onPress={() => router.replace('/screens/WelcomeScreen')}
+        activeOpacity={0.8}
+        hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+      >
+        <Image
+          source={require('../../assets/images/nutrimap-logo.png')}
+          style={styles.logo}
+        />
+      </TouchableOpacity>
 
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <Text style={styles.title}>Log in</Text>
 
-        {/* Username Field */}
-        <Text style={styles.label}>Username</Text>
+        {/* Email */}
+        <Text style={styles.label}>Email</Text>
         <TextInput
           style={styles.input}
-          placeholder="Enter your username"
+          placeholder="Enter your email"
           placeholderTextColor="#9CA3AF"
           autoCapitalize="none"
-          value={username}
-          onChangeText={setUsername}
+          keyboardType="email-address"
+          value={email}
+          onChangeText={(text) => {
+            const noSpaces = text.replace(/\s+/g, '');
+            setEmail(noSpaces);
+          }}
         />
 
-        {/* Password Field */}
+        {/* Password */}
         <Text style={styles.label}>Password</Text>
         <View style={styles.passwordContainer}>
           <TextInput
@@ -86,8 +134,11 @@ export default function LoginScreen() {
         <TouchableOpacity
           style={styles.loginButton}
           onPress={handleLogin}
+          disabled={loading}
         >
-          <Text style={styles.loginText}>Log In</Text>
+          <Text style={styles.loginText}>
+            {loading ? 'Logging in...' : 'Log In'}
+          </Text>
         </TouchableOpacity>
 
         {/* Divider */}
@@ -110,7 +161,7 @@ export default function LoginScreen() {
   );
 }
 
-// Styles
+// ✅ STYLES (FIXED TOUCH ISSUE)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -121,15 +172,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
-  logo: {
+
+  /* ✅ Touchable controls position */
+  logoTouchable: {
     position: 'absolute',
     top: 60,
     right: 20,
+    zIndex: 10,
+  },
+
+  /* ✅ Image is NOT absolute */
+  logo: {
     width: 60,
     height: 60,
     resizeMode: 'contain',
-    zIndex: 1,
   },
+
   title: {
     fontSize: 28,
     fontWeight: '900',
@@ -195,23 +253,6 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 1,
     backgroundColor: '#E5E7EB',
-  },
-  dividerText: {
-    marginHorizontal: 10,
-    color: '#6B7280',
-    fontSize: 13,
-  },
-  socialContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 15,
-    marginBottom: 30,
-  },
-  socialButton: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    padding: 12,
   },
   footerText: {
     textAlign: 'center',

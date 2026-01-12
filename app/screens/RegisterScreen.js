@@ -11,69 +11,155 @@ import {
   View
 } from 'react-native';
 
+import {
+  createUserWithEmailAndPassword,
+  signOut
+} from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, db } from "../../firebaseConfig"; // adjust path if needed
+
 export default function RegisterScreen() {
   const router = useRouter();
-  const [username, setUsername] = useState('');
+
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
 
-  const handleRegister = () => {
-    // Simple field validation
-    if (!username.trim() || !password.trim() || !confirmPassword.trim()) {
-      Alert.alert('Missing Fields', 'Please fill in all fields.');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleRegister = async () => {
+    setError('');
+
+    const cleanEmail = email.replace(/\s+/g, '');
+
+    // Validation
+    if (!cleanEmail || !password || !confirmPassword) {
+      setError('All fields are required.');
       return;
     }
 
-    // Check password match
-    if (password !== confirmPassword) {
-      Alert.alert('Password Mismatch', 'Passwords do not match.');
+    if (!cleanEmail.includes('@')) {
+      setError('Please enter a valid email address.');
       return;
     }
 
-    // Password strength (optional)
     if (password.length < 8) {
-      Alert.alert('Weak Password', 'Password must be at least 8 characters.');
+      setError('Password must be at least 8 characters.');
       return;
     }
 
-    // Mock registration logic — replace with backend later
-    Alert.alert('Success', 'Account created successfully!');
-    router.replace('/screens/LoginScreen');
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // 1️⃣ Create Firebase Auth account
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        cleanEmail,
+        password
+      );
+
+      const user = userCredential.user;
+
+      // 2️⃣ Save user profile to Firestore
+      await setDoc(doc(db, "users", user.uid), {
+        uid: user.uid,
+        email: cleanEmail,
+        role: "farmer",
+        createdAt: new Date()
+      });
+
+      // 3️⃣ Sign out so user must log in manually
+      await signOut(auth);
+
+      // 4️⃣ Success alert → Login screen
+      Alert.alert(
+        "Account Created",
+        "Your account was created successfully. Please log in to continue.",
+        [
+          {
+            text: "OK",
+            onPress: () => router.replace('/screens/LoginScreen')
+          }
+        ]
+      );
+
+    } catch (error) {
+      let message = 'Registration failed. Please try again.';
+
+      if (error.code === 'auth/email-already-in-use') {
+        message = 'This email is already registered.';
+      } else if (error.code === 'auth/invalid-email') {
+        message = 'Invalid email format.';
+      } else if (error.code === 'auth/weak-password') {
+        message = 'Password is too weak.';
+      } else if (error.code === 'auth/network-request-failed') {
+        message = 'Internet connection is required to register.';
+      }
+
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <View style={styles.container}>
-      {/* Logo */}
-      <Image
-        source={require('../../assets/images/nutrimap-logo.png')}
-        style={styles.logo}
-      />
+
+      {/* ✅ Clickable Logo → Welcome Screen */}
+      <TouchableOpacity
+        style={styles.logoTouchable}
+        onPress={() => router.replace('/screens/WelcomeScreen')}
+        activeOpacity={0.8}
+        hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+      >
+        <Image
+          source={require('../../assets/images/nutrimap-logo.png')}
+          style={styles.logo}
+        />
+      </TouchableOpacity>
 
       <Text style={styles.title}>Sign up</Text>
 
-      {/* Username Field */}
-      <Text style={styles.label}>Username</Text>
+      {/* Error Message */}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+      {/* Email */}
+      <Text style={styles.label}>Email</Text>
       <TextInput
         style={styles.input}
-        placeholder="Enter your username"
+        placeholder="Enter your email"
         placeholderTextColor="#9CA3AF"
         autoCapitalize="none"
-        value={username}
-        onChangeText={setUsername}
+        keyboardType="email-address"
+        value={email}
+        onChangeText={(text) => {
+          setError('');
+          setEmail(text.replace(/\s+/g, ''));
+        }}
       />
 
-      {/* Password Field */}
+      {/* Password */}
       <Text style={styles.label}>Create a password</Text>
       <View style={styles.passwordContainer}>
         <TextInput
           style={styles.passwordInput}
-          placeholder="must be 8 characters"
+          placeholder="Must be at least 8 characters"
           placeholderTextColor="#9CA3AF"
           secureTextEntry={!passwordVisible}
           value={password}
-          onChangeText={setPassword}
+          onChangeText={(text) => {
+            setError('');
+            setPassword(text);
+          }}
         />
         <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)}>
           <Ionicons
@@ -89,11 +175,14 @@ export default function RegisterScreen() {
       <View style={styles.passwordContainer}>
         <TextInput
           style={styles.passwordInput}
-          placeholder="repeat password"
+          placeholder="Repeat password"
           placeholderTextColor="#9CA3AF"
           secureTextEntry={!confirmVisible}
           value={confirmPassword}
-          onChangeText={setConfirmPassword}
+          onChangeText={(text) => {
+            setError('');
+            setConfirmPassword(text);
+          }}
         />
         <TouchableOpacity onPress={() => setConfirmVisible(!confirmVisible)}>
           <Ionicons
@@ -105,16 +194,22 @@ export default function RegisterScreen() {
       </View>
 
       {/* Register Button */}
-      <TouchableOpacity style={styles.registerButton} onPress={handleRegister}>
-        <Text style={styles.registerText}>Create Account</Text>
+      <TouchableOpacity
+        style={styles.registerButton}
+        onPress={handleRegister}
+        disabled={loading}
+      >
+        <Text style={styles.registerText}>
+          {loading ? 'Creating account...' : 'Create Account'}
+        </Text>
       </TouchableOpacity>
 
-        {/* Divider */}
+      {/* Divider */}
       <View style={styles.dividerContainer}>
         <View style={styles.line} />
       </View>
 
-      {/* Already have an account */}
+      {/* Login Redirect */}
       <Text style={styles.footerText}>
         Already have an account?{' '}
         <Text
@@ -128,6 +223,7 @@ export default function RegisterScreen() {
   );
 }
 
+// ✅ STYLES (TOUCH ISSUE FIXED)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -135,19 +231,33 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: 'center',
   },
-  logo: {
+
+  /* Touchable controls position */
+  logoTouchable: {
     position: 'absolute',
-    top: 40,
+    top: 60,
     right: 20,
+    zIndex: 10,
+  },
+
+  /* Image itself is NOT absolute */
+  logo: {
     width: 60,
     height: 60,
     resizeMode: 'contain',
   },
+
   title: {
     fontSize: 28,
     fontWeight: '900',
     color: '#000000',
-    marginBottom: 30,
+    marginBottom: 10,
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 14,
+    marginBottom: 15,
+    fontWeight: '500',
   },
   label: {
     fontSize: 14,

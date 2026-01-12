@@ -3,6 +3,7 @@ import * as Location from "expo-location";
 import { useEffect, useRef, useState } from "react";
 import { Dimensions, StyleSheet, View } from "react-native";
 import MapView, { Marker } from "react-native-maps";
+import { useMap } from "./map-context";
 
 // Sample scanned areas
 const SAMPLE_SCANNED_AREAS = [
