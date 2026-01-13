@@ -13,8 +13,15 @@ import {
   View,
 } from 'react-native';
 
-import { onAuthStateChanged, signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../../firebaseConfig"; // adjust path if needed
+import {
+  onAuthStateChanged,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut
+} from "firebase/auth";
+import { doc, updateDoc } from "firebase/firestore";
+import { auth, db } from "../../firebaseConfig";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -24,11 +31,15 @@ export default function LoginScreen() {
 
   const router = useRouter();
 
-  // ✅ Auto-login if user is already authenticated (works offline)
+  // 🔒 Auto-login ONLY if verified
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        router.replace('/tabs');
+        if (user.emailVerified) {
+          router.replace('/tabs');
+        } else {
+          await signOut(auth);
+        }
       }
     });
 
@@ -46,7 +57,29 @@ export default function LoginScreen() {
     try {
       setLoading(true);
 
-      await signInWithEmailAndPassword(auth, cleanEmail, password);
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        cleanEmail,
+        password
+      );
+
+      const user = userCredential.user;
+
+      // 🔒 Block unverified users
+      if (!user.emailVerified) {
+        await signOut(auth);
+
+        Alert.alert(
+          "Email Not Verified",
+          "Please verify your Gmail first. You can resend the verification email below."
+        );
+        return;
+      }
+
+      // 🔁 Sync verification status (optional but good practice)
+      await updateDoc(doc(db, "users", user.uid), {
+        emailVerified: true
+      });
 
       Alert.alert("Success", "Login successful!");
       router.replace('/tabs');
@@ -61,8 +94,7 @@ export default function LoginScreen() {
       } else if (error.code === "auth/invalid-email") {
         message = "Invalid email format.";
       } else if (error.code === "auth/network-request-failed") {
-        message =
-          "No internet connection. Please connect at least once to log in.";
+        message = "Internet connection required.";
       }
 
       Alert.alert("Login Error", message);
@@ -71,15 +103,109 @@ export default function LoginScreen() {
     }
   };
 
+  // 🔁 Resend Verification Email
+const handleResendVerification = async () => {
+  const cleanEmail = email.replace(/\s+/g, '');
+
+  if (!cleanEmail) {
+    Alert.alert(
+      "Email Required",
+      "Please enter your Gmail address first."
+    );
+    return;
+  }
+
+  try {
+    // 🔐 Firebase requires a signed-in user to resend verification
+    if (!password) {
+      Alert.alert(
+        "Verification Email",
+        "To resend the verification email, please log in once or reset your password."
+      );
+      return;
+    }
+
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      cleanEmail,
+      password
+    );
+
+    const user = userCredential.user;
+
+    if (user.emailVerified) {
+      Alert.alert(
+        "Already Verified",
+        "This email is already verified. You can log in."
+      );
+      await signOut(auth);
+      return;
+    }
+
+    await sendEmailVerification(user);
+    await signOut(auth);
+
+    Alert.alert(
+      "Verification Sent",
+      "A new verification email has been sent. Please check your inbox or spam folder."
+    );
+
+  } catch (error) {
+    let message = "Unable to resend verification email.";
+
+    if (error.code === "auth/user-not-found") {
+      message = "No account found with this email.";
+    } else if (error.code === "auth/wrong-password") {
+      message =
+        "Incorrect password. You may reset your password to regain access.";
+    } else if (error.code === "auth/invalid-email") {
+      message = "Invalid email format.";
+    } else if (error.code === "auth/network-request-failed") {
+      message = "Internet connection required.";
+    }
+
+    Alert.alert("Resend Error", message);
+  }
+};
+
+  // 🔑 Forgot Password
+  const handleForgotPassword = async () => {
+    const cleanEmail = email.replace(/\s+/g, '');
+
+    if (!cleanEmail) {
+      Alert.alert("Email Required", "Please enter your email address first.");
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+
+      Alert.alert(
+        "Password Reset Sent",
+        "A password reset link has been sent to your email."
+      );
+    } catch (error) {
+      let message = "Unable to send reset email.";
+
+      if (error.code === "auth/user-not-found") {
+        message = "No account found with this email.";
+      } else if (error.code === "auth/invalid-email") {
+        message = "Invalid email format.";
+      } else if (error.code === "auth/network-request-failed") {
+        message = "Internet connection required.";
+      }
+
+      Alert.alert("Reset Error", message);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
 
-      {/* ✅ Clickable Logo → Welcome Screen */}
+      {/* Logo → Welcome */}
       <TouchableOpacity
         style={styles.logoTouchable}
         onPress={() => router.replace('/screens/WelcomeScreen')}
-        activeOpacity={0.8}
-        hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
       >
         <Image
           source={require('../../assets/images/nutrimap-logo.png')}
@@ -91,18 +217,14 @@ export default function LoginScreen() {
         <Text style={styles.title}>Log in</Text>
 
         {/* Email */}
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>Gmail Address</Text>
         <TextInput
           style={styles.input}
-          placeholder="Enter your email"
-          placeholderTextColor="#9CA3AF"
           autoCapitalize="none"
+          placeholder="Enter your Gmail address"
           keyboardType="email-address"
           value={email}
-          onChangeText={(text) => {
-            const noSpaces = text.replace(/\s+/g, '');
-            setEmail(noSpaces);
-          }}
+          onChangeText={(text) => setEmail(text.replace(/\s+/g, ''))}
         />
 
         {/* Password */}
@@ -110,9 +232,8 @@ export default function LoginScreen() {
         <View style={styles.passwordContainer}>
           <TextInput
             style={styles.passwordInput}
-            placeholder="Enter your password"
-            placeholderTextColor="#9CA3AF"
             secureTextEntry={!passwordVisible}
+            placeholder="Enter password"
             value={password}
             onChangeText={setPassword}
           />
@@ -126,7 +247,7 @@ export default function LoginScreen() {
         </View>
 
         {/* Forgot Password */}
-        <TouchableOpacity>
+        <TouchableOpacity onPress={handleForgotPassword}>
           <Text style={styles.forgotPassword}>Forgot password?</Text>
         </TouchableOpacity>
 
@@ -146,7 +267,7 @@ export default function LoginScreen() {
           <View style={styles.line} />
         </View>
 
-        {/* Register Redirect */}
+        {/* Footer */}
         <Text style={styles.footerText}>
           Don't have an account?{' '}
           <Text
@@ -156,12 +277,23 @@ export default function LoginScreen() {
             Sign up
           </Text>
         </Text>
+
+        <Text style={styles.footerText}>
+          Didn’t receive the verification email?{' '}
+          <Text
+            style={styles.signUpLink}
+            onPress={handleResendVerification}
+          >
+            Resend
+          </Text>
+        </Text>
+
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ✅ STYLES (FIXED TOUCH ISSUE)
+// ✅ STYLES (ONLY ONE SMALL ADDITION)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -172,22 +304,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 20,
   },
-
-  /* ✅ Touchable controls position */
   logoTouchable: {
     position: 'absolute',
     top: 60,
     right: 20,
     zIndex: 10,
   },
-
-  /* ✅ Image is NOT absolute */
   logo: {
     width: 60,
     height: 60,
     resizeMode: 'contain',
   },
-
   title: {
     fontSize: 28,
     fontWeight: '900',
@@ -258,9 +385,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#6B7280',
     fontSize: 15,
+    marginBottom: 15,
   },
   signUpLink: {
     color: '#000000',
     fontWeight: '700',
+  },
+  resendLink: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontSize: 13,
+    color: '#1D503A',
+    fontWeight: '600',
   },
 });

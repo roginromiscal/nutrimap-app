@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   Alert,
   Image,
+  Linking,
   StyleSheet,
   Text,
   TextInput,
@@ -13,10 +14,11 @@ import {
 
 import {
   createUserWithEmailAndPassword,
+  sendEmailVerification,
   signOut
 } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
-import { auth, db } from "../../firebaseConfig"; // adjust path if needed
+import { auth, db } from "../../firebaseConfig";
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -29,21 +31,43 @@ export default function RegisterScreen() {
   const [confirmVisible, setConfirmVisible] = useState(false);
 
   const [error, setError] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // ✅ Email FORMAT validation only (existence is verified via email link)
+  const validateEmail = (value) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!value) {
+      setEmailError('');
+      return;
+    }
+
+    if (!emailRegex.test(value)) {
+      setEmailError('Please enter a valid email format.');
+      return;
+    }
+
+    if (!value.endsWith('@gmail.com')) {
+      setEmailError('Only Gmail accounts are allowed.');
+      return;
+    }
+
+    setEmailError('');
+  };
 
   const handleRegister = async () => {
     setError('');
 
     const cleanEmail = email.replace(/\s+/g, '');
 
-    // Validation
     if (!cleanEmail || !password || !confirmPassword) {
       setError('All fields are required.');
       return;
     }
 
-    if (!cleanEmail.includes('@')) {
-      setError('Please enter a valid email address.');
+    if (emailError) {
+      setError('Please fix the email address.');
       return;
     }
 
@@ -69,21 +93,25 @@ export default function RegisterScreen() {
 
       const user = userCredential.user;
 
-      // 2️⃣ Save user profile to Firestore
+      // 2️⃣ Send verification email (THIS proves Gmail exists)
+      await sendEmailVerification(user);
+
+      // 3️⃣ Save user profile (pending verification)
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         email: cleanEmail,
         role: "farmer",
+        emailVerified: false,
         createdAt: new Date()
       });
 
-      // 3️⃣ Sign out so user must log in manually
+      // 4️⃣ Force logout until email is verified
       await signOut(auth);
 
-      // 4️⃣ Success alert → Login screen
+      // 5️⃣ Inform user clearly
       Alert.alert(
-        "Account Created",
-        "Your account was created successfully. Please log in to continue.",
+        "Verify Your Email",
+        "A verification link has been sent to your Gmail account. Please verify your email before logging in.",
         [
           {
             text: "OK",
@@ -96,13 +124,13 @@ export default function RegisterScreen() {
       let message = 'Registration failed. Please try again.';
 
       if (error.code === 'auth/email-already-in-use') {
-        message = 'This email is already registered.';
+        message = 'This Gmail account is already registered.';
       } else if (error.code === 'auth/invalid-email') {
-        message = 'Invalid email format.';
+        message = 'Invalid Gmail format.';
       } else if (error.code === 'auth/weak-password') {
         message = 'Password is too weak.';
       } else if (error.code === 'auth/network-request-failed') {
-        message = 'Internet connection is required to register.';
+        message = 'Internet connection is required.';
       }
 
       setError(message);
@@ -114,12 +142,10 @@ export default function RegisterScreen() {
   return (
     <View style={styles.container}>
 
-      {/* ✅ Clickable Logo → Welcome Screen */}
+      {/* Logo → Welcome */}
       <TouchableOpacity
         style={styles.logoTouchable}
         onPress={() => router.replace('/screens/WelcomeScreen')}
-        activeOpacity={0.8}
-        hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
       >
         <Image
           source={require('../../assets/images/nutrimap-logo.png')}
@@ -129,30 +155,42 @@ export default function RegisterScreen() {
 
       <Text style={styles.title}>Sign up</Text>
 
-      {/* Error Message */}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       {/* Email */}
-      <Text style={styles.label}>Email</Text>
+      <Text style={styles.label}>Gmail Address</Text>
       <TextInput
-        style={styles.input}
-        placeholder="Enter your email"
+        style={[
+          styles.input,
+          emailError ? { borderColor: '#DC2626' } : null
+        ]}
+        placeholder="Enter your Gmail address"
         placeholderTextColor="#9CA3AF"
         autoCapitalize="none"
         keyboardType="email-address"
         value={email}
         onChangeText={(text) => {
+          const cleaned = text.replace(/\s+/g, '');
+          setEmail(cleaned);
           setError('');
-          setEmail(text.replace(/\s+/g, ''));
+          validateEmail(cleaned);
         }}
       />
+
+      {emailError ? (
+        <Text style={styles.inlineErrorText}>{emailError}</Text>
+      ) : (
+        <Text style={styles.helperText}>
+          You must verify your Gmail before logging in.
+        </Text>
+      )}
 
       {/* Password */}
       <Text style={styles.label}>Create a password</Text>
       <View style={styles.passwordContainer}>
         <TextInput
           style={styles.passwordInput}
-          placeholder="Must be at least 8 characters"
+          placeholder="At least 8 characters"
           placeholderTextColor="#9CA3AF"
           secureTextEntry={!passwordVisible}
           value={password}
@@ -209,21 +247,33 @@ export default function RegisterScreen() {
         <View style={styles.line} />
       </View>
 
-      {/* Login Redirect */}
-      <Text style={styles.footerText}>
-        Already have an account?{' '}
-        <Text
-          style={styles.loginLink}
-          onPress={() => router.push('/screens/LoginScreen')}
-        >
-          Log in
+      {/* Footer */}
+      <View style={styles.footerContainer}>
+        <Text style={styles.footerText}>
+          Already have an account?{' '}
+          <Text
+            style={styles.loginLink}
+            onPress={() => router.push('/screens/LoginScreen')}
+          >
+            Log in
+          </Text>
         </Text>
-      </Text>
+
+        <Text style={styles.footerText}>
+          Don't have a Gmail account?{' '}
+          <Text
+            style={styles.loginLink}
+            onPress={() => Linking.openURL('https://accounts.google.com/signup')}
+          >
+            Create one
+          </Text>
+        </Text>
+      </View>
+
     </View>
   );
 }
 
-// ✅ STYLES (TOUCH ISSUE FIXED)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -231,22 +281,17 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: 'center',
   },
-
-  /* Touchable controls position */
   logoTouchable: {
     position: 'absolute',
     top: 60,
     right: 20,
     zIndex: 10,
   },
-
-  /* Image itself is NOT absolute */
   logo: {
     width: 60,
     height: 60,
     resizeMode: 'contain',
   },
-
   title: {
     fontSize: 28,
     fontWeight: '900',
@@ -258,6 +303,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 15,
     fontWeight: '500',
+  },
+  inlineErrorText: {
+    fontSize: 12,
+    color: '#DC2626',
+    marginBottom: 15,
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 15,
   },
   label: {
     fontSize: 14,
@@ -271,7 +326,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 15,
-    marginBottom: 15,
+    marginBottom: 6,
     fontSize: 14,
     color: '#111827',
   },
@@ -312,13 +367,24 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#E5E7EB',
   },
+  footerContainer: {
+    alignItems: 'center',
+  },
   footerText: {
     textAlign: 'center',
     color: '#6B7280',
     fontSize: 15,
+    marginBottom: 15,
   },
   loginLink: {
     color: '#000000',
     fontWeight: '700',
+  },
+  createGmailLink: {
+    marginTop: 8,
+    marginBottom: 15,
+    fontSize: 13,
+    color: '#1D503A',
+    fontWeight: '600',
   },
 });
