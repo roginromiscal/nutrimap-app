@@ -1,5 +1,5 @@
-import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import * as Location from "expo-location";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -13,140 +13,106 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
+import { getUserScans } from "../database/getUserScans";
+import { auth } from "./firebaseConfig";
 import { useMap } from "./map-context";
-
 
 const { height } = Dimensions.get("window");
 
-// Sample scanned areas with soil data
-const SAMPLE_SCANNED_AREAS = [
-  {
-    id: 1,
-    latitude: 8.475,
-    longitude: 124.640,
-    title: "Farm Area 1",
-    description: "Corn field",
-    dateScanned: "09/12/2025",
-    coordinates: "8.475, 124.640",
-    nitrogen: 70,
-    phosphorus: 55,
-    potassium: 75,
-    moisture: 65,
-    temperature: 28,
-    cropRecommendation: "Corn",
-    cropDescription: "Suitable due to enough nitrogen level",
-  },
-  {
-    id: 2,
-    latitude: 8.485,
-    longitude: 124.655,
-    title: "Farm Area 2",
-    description: "Rice paddy",
-    dateScanned: "08/12/2025",
-    coordinates: "8.485, 124.655",
-    nitrogen: 60,
-    phosphorus: 65,
-    potassium: 70,
-    moisture: 75,
-    temperature: 26,
-    cropRecommendation: "Rice",
-    cropDescription: "Perfect conditions for rice cultivation",
-  },
-  {
-    id: 3,
-    latitude: 8.480,
-    longitude: 124.630,
-    title: "Farm Area 3",
-    description: "Vegetable garden",
-    dateScanned: "10/12/2025",
-    coordinates: "8.480, 124.630",
-    nitrogen: 80,
-    phosphorus: 70,
-    potassium: 65,
-    moisture: 80,
-    temperature: 29,
-    cropRecommendation: "Vegetables",
-    cropDescription: "High nitrogen perfect for leafy vegetables",
-  },
-];
-
 export default function DetailsScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams();
+
   const [location, setLocation] = useState(null);
   const [selectedArea, setSelectedArea] = useState(null);
-  const route = useRoute();
+  const [scannedAreas, setScannedAreas] = useState([]);
+
   const slideAnimation = useRef(new Animated.Value(height)).current;
   const panResponder = useRef(null);
   const scrollRef = useRef(null);
   const isAtTop = useRef(true);
-  const navigation = useNavigation();
-  const { mapRef: contextMapRef, mapRegion, setMapRegion, initialRegion } = useMap();
-  const mapRef = contextMapRef;
 
-  // Get selected area from route params when navigating from scanned_area
-  useEffect(() => {
-    if (route.params?.selectedArea) {
-      setSelectedArea(route.params.selectedArea);
-    }
-  }, [route.params?.selectedArea]);
+  const { mapRef, mapRegion, setMapRegion } = useMap();
 
+  /* -------------------- PARSE SELECTED AREA -------------------- */
   useEffect(() => {
-    const getLocation = async () => {
+    if (params.selectedArea) {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== "granted") {
-          console.log("Permission to access location was denied");
-          return;
+        const parsed =
+          typeof params.selectedArea === "string"
+            ? JSON.parse(params.selectedArea)
+            : params.selectedArea;
+
+        setSelectedArea(parsed);
+
+        if (parsed?.latitude && parsed?.longitude) {
+          const region = {
+            latitude: parsed.latitude,
+            longitude: parsed.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          };
+          setMapRegion(region);
+          mapRef.current?.animateToRegion(region, 500);
         }
-
-        const currentLocation = await Location.getCurrentPositionAsync({});
-        const { latitude, longitude } = currentLocation.coords;
-
-        setLocation({
-          latitude,
-          longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        });
-
-        // Only animate to location on first load if no saved map region
-        if (!mapRegion && mapRef.current) {
-          mapRef.current?.animateToRegion({
-            latitude,
-            longitude,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          });
-        }
-      } catch (error) {
-        console.error("Error getting location:", error);
+      } catch (err) {
+        console.error("Failed to parse selectedArea", err);
       }
-    };
+    }
+  }, [params.selectedArea]);
 
-    getLocation();
+  /* -------------------- LOAD SCANS FOR MARKERS -------------------- */
+  useFocusEffect(
+    useCallback(() => {
+      const uid = auth.currentUser?.uid ?? "local";
+      getUserScans(uid)
+        .then(setScannedAreas)
+        .catch(err => console.error("Failed to load scans", err));
+
+      slideAnimation.setValue(0); // ✅ reset bottom sheet every time
+    }, [])
+  );
+
+  /* -------------------- LOCATION -------------------- */
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") return;
+
+      const current = await Location.getCurrentPositionAsync({});
+      const region = {
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+      setLocation(region);
+
+      if (!mapRegion) {
+        setMapRegion(region);
+      }
+    })();
   }, []);
 
-  // Set up pan responder for drag-to-dismiss
+  /* -------------------- BOTTOM SHEET DRAG -------------------- */
   useEffect(() => {
     panResponder.current = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (evt, gestureState) => {
-        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 5;
-        // Only activate when dragging downwards and ScrollView is at top
-        return vertical && gestureState.dy > 0 && isAtTop.current;
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dy) > Math.abs(g.dx) && g.dy > 5 && isAtTop.current,
+
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) slideAnimation.setValue(g.dy);
       },
-      onPanResponderMove: (evt, gestureState) => {
-        if (gestureState.dy > 0) {
-          slideAnimation.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        if (gestureState.dy > 200) {
+
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 200) {
           Animated.timing(slideAnimation, {
             toValue: height,
             duration: 300,
             useNativeDriver: false,
           }).start(() => {
-            navigation.navigate("home");
+            router.replace("/tabs/home"); // ✅ drag down → HOME
           });
         } else {
           Animated.timing(slideAnimation, {
@@ -159,127 +125,84 @@ export default function DetailsScreen() {
     });
   }, []);
 
-  // Animate in when screen loads
-  useEffect(() => {
-    Animated.timing(slideAnimation, {
-      toValue: 0,
-      duration: 500,
-      useNativeDriver: false,
-    }).start();
-  }, []);
-
-  // Reset animation when screen gains focus
-  useFocusEffect(
-    useCallback(() => {
-      slideAnimation.setValue(0);
-      Animated.timing(slideAnimation, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: false,
-      }).start();
-      
-      setTimeout(() => {
-        scrollRef.current?.scrollTo({ y: 0, animated: true });
-      }, 300);
-    }, [slideAnimation])
-  );
-
-  const initialRegionState = location || {
-    latitude: 8.482,
-    longitude: 124.647,
-    latitudeDelta: 0.5,
-    longitudeDelta: 0.5,
-  };
-
-  const handleRegionChange = (region) => {
-    setMapRegion(region);
-  };
-
+  /* -------------------- RENDER -------------------- */
   return (
     <View style={styles.container}>
       <MapView
         ref={mapRef}
         style={styles.map}
-        initialRegion={mapRegion || initialRegionState}
+        initialRegion={mapRegion || location}
         mapType="hybrid"
-        showsUserLocation={true}
-        onRegionChange={handleRegionChange}
+        showsUserLocation
+        onRegionChangeComplete={setMapRegion}
       >
-        {/* Display user's current location */}
         {location && (
-          <Marker
-            coordinate={{ latitude: location.latitude, longitude: location.longitude }}
-            title="Your Location"
-            description="Current device location"
-            pinColor="blue"
-          />
+          <Marker coordinate={location} title="Your Location" pinColor="blue" />
         )}
 
-        {/* Display sample scanned areas */}
-        {SAMPLE_SCANNED_AREAS.map((area) => (
-          <Marker
-            key={area.id}
-            coordinate={{ latitude: area.latitude, longitude: area.longitude }}
-            title={area.title}
-            description={area.description}
-            pinColor="green"
-            onPress={() => setSelectedArea(area)}
-          />
-        ))}
+        {scannedAreas.map(
+          area =>
+            area.latitude &&
+            area.longitude && (
+              <Marker
+                key={area.id}
+                coordinate={{ latitude: area.latitude, longitude: area.longitude }}
+                title={area.title}
+                pinColor="green"
+                onPress={() => setSelectedArea(area)}
+              />
+            )
+        )}
       </MapView>
 
-      {/* Animated Bottom Sheet */}
-      <Animated.View
-        style={[
-          styles.bottomSheet,
-          {
-            transform: [{ translateY: slideAnimation }],
-          },
-        ]}
-        {...panResponder.current?.panHandlers}
-      >
+        <Animated.View
+          style={[
+            styles.bottomSheet,
+            { transform: [{ translateY: slideAnimation }] },
+          ]}
+        >
         <ScrollView
           ref={scrollRef}
           style={styles.bottomSheetContent}
-          showsVerticalScrollIndicator={false}
+          onScroll={e => (isAtTop.current = e.nativeEvent.contentOffset.y <= 0)}
           scrollEventThrottle={16}
-          onScroll={(e) => {
-            const y = e.nativeEvent.contentOffset.y || 0;
-            isAtTop.current = y <= 0;
-          }}
+          nestedScrollEnabled
         >
-          <View style={styles.dragHandleContainer} {...panResponder.current?.panHandlers}>
+          <View
+            style={styles.dragHandleContainer}
+            {...panResponder.current?.panHandlers}  
+          >
             <View style={styles.dragHandle} />
           </View>
-          
+
           {selectedArea ? (
-            // Land Area Details View
             <View>
               <View style={styles.header}>
                 <Text style={styles.headerTitle}>Land Area Detail</Text>
               </View>
 
+              {/* BACK TO SCANNED AREA */}
               <TouchableOpacity
                 style={styles.backButton}
-                onPress={() => {
-                  navigation.navigate("scanned_area");
-                }}
+                onPress={() => router.push("/tabs/scanned_area")}
               >
                 <Text style={styles.backButtonText}>← Back to Areas</Text>
               </TouchableOpacity>
 
               <View style={styles.detailsInfoBox}>
-                <Text style={styles.detailsInfoLabel}>Date Scanned: {selectedArea.dateScanned}</Text>
-                <Text style={styles.detailsInfoLabel}>Area Coordinates: {selectedArea.coordinates}</Text>
+                <Text style={styles.detailsInfoLabel}>
+                  Date Scanned: {selectedArea.dateScanned}
+                </Text>
+                <Text style={styles.detailsInfoLabel}>
+                  Area Coordinates: {selectedArea.coordinates}
+                </Text>
               </View>
 
-              {/* Nutrient Chart */}
+              {/* NPK */}
               <View style={styles.chartContainer}>
                 <Text style={styles.chartTitle}>NPK Nutrients</Text>
-                
-                {/* Chart with proper bars */}
+
                 <View style={styles.chartArea}>
-                  {/* Y-axis with labels */}
                   <View style={styles.chartYAxis}>
                     <Text style={styles.yAxisText}>100</Text>
                     <Text style={styles.yAxisText}>75</Text>
@@ -288,90 +211,63 @@ export default function DetailsScreen() {
                     <Text style={styles.yAxisText}>0</Text>
                   </View>
 
-                  {/* Bars section */}
                   <View style={styles.barsSection}>
-                    {/* Background bars */}
-                    <View style={styles.barsBackgroundContainer}>
-                      <View style={styles.barBackgroundLine} />
-                      <View style={styles.barBackgroundLine} />
-                      <View style={styles.barBackgroundLine} />
-                      <View style={styles.barBackgroundLine} />
-                    </View>
-
-                    {/* Actual bars */}
                     <View style={styles.barsDisplayContainer}>
-                      {/* Nitrogen */}
-                      <View style={styles.barItemContainer}>
-                        <View style={[styles.barItem, { height: Math.round(selectedArea.nitrogen * 2.2) }]}>
-                          <Text style={styles.barText}>{selectedArea.nitrogen}</Text>
+                      {[
+                        { label: "N", value: selectedArea.nitrogen, color: "#4A90E2" },
+                        { label: "P", value: selectedArea.phosphorus, color: "#50C878" },
+                        { label: "K", value: selectedArea.potassium, color: "#FFB84D" },
+                      ].map((item, i) => (
+                        <View key={i} style={styles.barItemContainer}>
+                          <View
+                            style={[
+                              styles.barItem,
+                              {
+                                height: Math.min(item.value * 2.2, 220),
+                                backgroundColor: item.color,
+                              },
+                            ]}
+                          >
+                            <Text style={styles.barText}>{item.value}</Text>
+                          </View>
+                          <Text style={styles.barLabel}>{item.label}</Text>
                         </View>
-                        <Text style={styles.barLabel}>N</Text>
-                        <Text style={styles.barUnit}>{selectedArea.nitrogen} mg/kg</Text>
-                      </View>
-
-                      {/* Phosphorus */}
-                      <View style={styles.barItemContainer}>
-                        <View style={[styles.barItem, { height: Math.round(selectedArea.phosphorus * 2.2), backgroundColor: "#50C878" }]}>
-                          <Text style={styles.barText}>{selectedArea.phosphorus}</Text>
-                        </View>
-                        <Text style={styles.barLabel}>P</Text>
-                        <Text style={styles.barUnit}>{selectedArea.phosphorus} mg/kg</Text>
-                      </View>
-
-                      {/* Potassium */}
-                      <View style={styles.barItemContainer}>
-                        <View style={[styles.barItem, { height: Math.round(selectedArea.potassium * 2.2), backgroundColor: "#FFB84D" }]}>
-                          <Text style={styles.barText}>{selectedArea.potassium}</Text>
-                        </View>
-                        <Text style={styles.barLabel}>K</Text>
-                        <Text style={styles.barUnit}>{selectedArea.potassium} mg/kg</Text>
-                      </View>
+                      ))}
                     </View>
-                  </View>
-                </View>
-
-                {/* Legend */}
-                <View style={styles.legend}>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendColor, { backgroundColor: "#4A90E2" }]} />
-                    <Text style={styles.legendLabel}>Nitrogen - {selectedArea.nitrogen} mg/kg</Text>
-                  </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendColor, { backgroundColor: "#50C878" }]} />
-                    <Text style={styles.legendLabel}>Phosphorus - {selectedArea.phosphorus} mg/kg</Text>
-                  </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendColor, { backgroundColor: "#FFB84D" }]} />
-                    <Text style={styles.legendLabel}>Potassium - {selectedArea.potassium} mg/kg</Text>
                   </View>
                 </View>
               </View>
 
-              {/* Soil Properties */}
+              {/* SOIL */}
               <View style={styles.propertiesContainer}>
                 <View style={styles.propertyRow}>
-                  <Text style={styles.propertyLabel}>Soil Moisture</Text>
+                  <Text style={styles.propertyLabel}>Moisture</Text>
                   <Text style={styles.propertyValue}>{selectedArea.moisture} %</Text>
                 </View>
                 <View style={styles.propertyRow}>
                   <Text style={styles.propertyLabel}>Temperature</Text>
                   <Text style={styles.propertyValue}>{selectedArea.temperature} °C</Text>
                 </View>
+                <View style={styles.propertyRow}>
+                  <Text style={styles.propertyLabel}>pH</Text>
+                  <Text style={styles.propertyValue}>{selectedArea.ph}</Text>
+                </View>
               </View>
 
-              {/* Crop Recommendation */}
+              {/* CROP */}
               <View style={styles.cropContainer}>
                 <Text style={styles.cropTitle}>Crop Recommendation</Text>
-                
                 <View style={styles.cropCard}>
                   <Image
-                    source={{ uri: "https://via.placeholder.com/80?text=" + selectedArea.cropRecommendation }}
+                    source={{ uri: "https://via.placeholder.com/80" }}
                     style={styles.cropImage}
                   />
                   <View style={styles.cropInfo}>
-                    <Text style={styles.cropName}>{selectedArea.cropRecommendation}</Text>
+                    <Text style={styles.cropName}>
+                      {selectedArea.recommended_crop || "N/A"}
+                    </Text>
                     <Text style={styles.cropDescription}>
-                      {selectedArea.cropDescription}
+                      Based on soil conditions
                     </Text>
                   </View>
                 </View>
@@ -380,11 +276,10 @@ export default function DetailsScreen() {
               <View style={{ height: 100 }} />
             </View>
           ) : (
-            // No area selected view
             <View style={styles.emptyStateContainer}>
               <Text style={styles.emptyStateTitle}>No Area Selected</Text>
               <Text style={styles.emptyStateText}>
-                Please select a scanned area from the area list to view detailed soil analysis and crop recommendations.
+                Select a scanned area to view details.
               </Text>
             </View>
           )}
@@ -393,6 +288,11 @@ export default function DetailsScreen() {
     </View>
   );
 }
+
+/* ⚠️ STYLES ARE UNTOUCHED BELOW */
+
+
+
 
 const styles = StyleSheet.create({
   container: {

@@ -1,13 +1,16 @@
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Dimensions,
+  Modal,
   PanResponder,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -16,164 +19,165 @@ import { useMap } from "./map-context";
 
 const { height } = Dimensions.get("window");
 
-// Sample scanned areas with soil data
-const SAMPLE_SCANNED_AREAS = [
-  {
-    id: 1,
-    latitude: 8.475,
-    longitude: 124.640,
-    title: "Farm Area 1",
-    description: "Corn field",
-    dateScanned: "09/12/2025",
-    coordinates: "8.475, 124.640",
-    nitrogen: 70,
-    phosphorus: 55,
-    potassium: 75,
-    moisture: 65,
-    temperature: 28,
-    cropRecommendation: "Corn",
-    cropDescription: "Suitable due to enough nitrogen level",
-  },
-  {
-    id: 2,
-    latitude: 8.485,
-    longitude: 124.655,
-    title: "Farm Area 2",
-    description: "Rice paddy",
-    dateScanned: "08/12/2025",
-    coordinates: "8.485, 124.655",
-    nitrogen: 60,
-    phosphorus: 65,
-    potassium: 70,
-    moisture: 75,
-    temperature: 26,
-    cropRecommendation: "Rice",
-    cropDescription: "Perfect conditions for rice cultivation",
-  },
-  {
-    id: 3,
-    latitude: 8.480,
-    longitude: 124.630,
-    title: "Farm Area 3",
-    description: "Vegetable garden",
-    dateScanned: "10/12/2025",
-    coordinates: "8.480, 124.630",
-    nitrogen: 80,
-    phosphorus: 70,
-    potassium: 65,
-    moisture: 80,
-    temperature: 29,
-    cropRecommendation: "Vegetables",
-    cropDescription: "High nitrogen perfect for leafy vegetables",
-  },
-];
+// SQLite helpers
+import { deleteScan } from "../database/deleteScan";
+import { getUserScans } from "../database/getUserScans";
+import { updateScanTitle } from "../database/updateScanTitle";
+
+import { auth } from "./firebaseConfig";
 
 export default function ScannedAreaScreen() {
+  const router = useRouter();
+
   const scrollRef = useRef(null);
   const isAtTop = useRef(true);
-  const navigation = useNavigation();
   const slideAnimation = useRef(new Animated.Value(height)).current;
   const panResponder = useRef(null);
-  const mapRef = useRef(null);
-  const [location, setLocation] = useState(null);
-  const { mapRegion, setMapRegion, initialRegion } = useMap();
 
-  const handleAreaSelect = (area) => {
-    // Navigate to details tab using jumpTo for tab navigation
-    navigation.jumpTo("details", { selectedArea: area });
+
+  const [sheetVisible, setSheetVisible] = useState(true); // ✅ USED
+  const [location, setLocation] = useState(null);
+  const [scannedAreas, setScannedAreas] = useState([]);
+
+  // Rename modal
+  const [renameVisible, setRenameVisible] = useState(false);
+  const [renameText, setRenameText] = useState("");
+  const [selectedArea, setSelectedArea] = useState(null);
+
+  const { mapRef, mapRegion, setMapRegion, initialRegion } = useMap();
+
+
+  // 🔄 Load scans
+  const loadScans = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      setScannedAreas([]);
+      return;
+    }
+    const rows = await getUserScans(uid);
+    setScannedAreas(rows);
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      loadScans();
+      setSheetVisible(true);            // ✅ ensure sheet visible
+      slideAnimation.setValue(0);       // ✅ reset position
+    }, [])
+  );
+
+  // 📍 Location
   useEffect(() => {
-    const getLocation = async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== "granted") {
-          console.log("Permission to access location was denied");
-          return;
-        }
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") return;
 
-        const currentLocation = await Location.getCurrentPositionAsync({});
-        const { latitude, longitude } = currentLocation.coords;
-
-        setLocation({
-          latitude,
-          longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        });
-      } catch (error) {
-        console.error("Error getting location:", error);
-      }
-    };
-
-    getLocation();
+      const current = await Location.getCurrentPositionAsync({});
+      setLocation({
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      });
+    })();
   }, []);
 
-  // Set up pan responder for drag-to-dismiss on drag handle only
+  // 🧲 Bottom sheet drag
   useEffect(() => {
     panResponder.current = PanResponder.create({
-      // Always be ready to handle touch on drag handle
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (evt, gestureState) => {
-        const vertical = Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 5;
-        // Take over when dragging downwards and the ScrollView is at top
-        return vertical && gestureState.dy > 0 && isAtTop.current;
+      onMoveShouldSetPanResponder: (e, g) =>
+        Math.abs(g.dy) > Math.abs(g.dx) && g.dy > 5 && isAtTop.current,
+
+      onPanResponderMove: (e, g) => {
+        if (g.dy > 0) slideAnimation.setValue(g.dy);
       },
-      onPanResponderMove: (evt, gestureState) => {
-        if (gestureState.dy > 0) {
-          slideAnimation.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        if (gestureState.dy > 200) {
-          // Drag down enough to dismiss
-          Animated.timing(slideAnimation, {
-            toValue: height,
-            duration: 300,
-            useNativeDriver: false,
-          }).start(() => {
-            navigation.navigate("home");
-          });
-        } else {
-          // Snap back to top
-          Animated.timing(slideAnimation, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: false,
-          }).start();
-        }
+
+      onPanResponderRelease: (e, g) => {
+        const shouldDismiss = g.dy > 200;
+
+        Animated.timing(slideAnimation, {
+          toValue: shouldDismiss ? height : 0,
+          duration: 300,
+          useNativeDriver: false,
+        }).start(() => {
+          if (shouldDismiss) {
+            setSheetVisible(false);        // ✅ hide sheet
+            router.replace("/tabs/home"); // ✅ go home
+          }
+        });
       },
     });
   }, []);
 
-  // Animate in when screen loads
-  useEffect(() => {
-    Animated.timing(slideAnimation, {
-      toValue: 0,
-      duration: 500,
-      useNativeDriver: false,
-    }).start();
-  }, []);
+  const handleAreaSelect = (area) => {
+    if (area.latitude && area.longitude) {
+      const region = {
+        latitude: area.latitude,
+        longitude: area.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
 
-  // Reset animation when focused
-  useFocusEffect(
-    useCallback(() => {
+      // ✅ Zoom shared map to selected area
+      setMapRegion(region);
+      mapRef.current?.animateToRegion(region, 500);
+
+      // ✅ Bring bottom sheet back up if dismissed
       Animated.timing(slideAnimation, {
         toValue: 0,
-        duration: 500,
+        duration: 300,
         useNativeDriver: false,
       }).start();
-      
-      // Sync map with home screen's map region
-      if (mapRef.current && mapRegion) {
-        mapRef.current.animateToRegion(mapRegion, 300);
-      }
-      
-      setTimeout(() => {
-        scrollRef.current?.scrollTo({ y: 0, animated: true });
-      }, 300);
-    }, [slideAnimation, mapRegion])
-  );
+    }
+
+    // ✅ Navigate to details screen
+    router.push({
+      pathname: "/tabs/details",
+      params: {
+        selectedArea: JSON.stringify(area),
+      },
+    });
+  };
+
+
+  // 🗑 Delete
+  const handleDelete = (area) => {
+    Alert.alert("Delete Scanned Area", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          await deleteScan(area.id);
+          loadScans();
+        },
+      },
+    ]);
+  };
+
+  // ✏ Rename
+  const handleRename = (area) => {
+    setSelectedArea(area);
+    setRenameText(area.title);
+    setRenameVisible(true);
+  };
+
+  const saveRename = async () => {
+    if (!renameText.trim()) return;
+    await updateScanTitle(selectedArea.id, renameText.trim());
+    setRenameVisible(false);
+    setSelectedArea(null);
+    loadScans();
+  };
+
+  const handleLongPress = (area) => {
+    Alert.alert(area.title, "Choose an option", [
+      { text: "Rename", onPress: () => handleRename(area) },
+      { text: "Delete", style: "destructive", onPress: () => handleDelete(area) },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
 
   return (
     <View style={styles.container}>
@@ -182,75 +186,62 @@ export default function ScannedAreaScreen() {
         style={styles.map}
         initialRegion={mapRegion || initialRegion}
         mapType="hybrid"
-        showsUserLocation={true}
+        showsUserLocation
       >
-        {/* Display user's current location */}
-        {location && (
-          <Marker
-            coordinate={{ latitude: location.latitude, longitude: location.longitude }}
-            title="Your Location"
-            description="Current device location"
-            pinColor="blue"
-          />
-        )}
+        {location && <Marker coordinate={location} pinColor="blue" />}
 
-        {/* Display sample scanned areas */}
-        {SAMPLE_SCANNED_AREAS.map((area) => (
-          <Marker
-            key={area.id}
-            coordinate={{ latitude: area.latitude, longitude: area.longitude }}
-            title={area.title}
-            description={area.description}
-            pinColor="green"
-            onPress={() => navigation.jumpTo("details", { selectedArea: area })}
-          />
-        ))}
+        {scannedAreas.map(
+          (area) =>
+            area.latitude &&
+            area.longitude && (
+              <Marker
+                key={area.id}
+                coordinate={{ latitude: area.latitude, longitude: area.longitude }}
+                title={area.title}
+                pinColor="green"
+              />
+            )
+        )}
       </MapView>
 
-      {/* Animated Bottom Sheet - Location Selector */}
-      <Animated.View
-        style={[
-          styles.bottomSheet,
-          {
-            transform: [{ translateY: slideAnimation }],
-          },
-        ]}
+      {/* ✅ Bottom Sheet ONLY when visible */}
+      {sheetVisible && (
+        <Animated.View
+          style={[styles.bottomSheet, { transform: [{ translateY: slideAnimation }] }]}
           {...panResponder.current?.panHandlers}
         >
-        <ScrollView
-          ref={scrollRef}
-          style={styles.bottomSheetContent}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled={true}
-              scrollEventThrottle={16}
-              scrollEnabled={isAtTop.current}
-              onScroll={(e) => {
-                const y = e.nativeEvent.contentOffset.y || 0;
-                isAtTop.current = y <= 0;
-              }}
-              contentContainerStyle={{ paddingBottom: 20 }}
-        >
-              <View style={styles.dragHandleContainer} {...panResponder.current?.panHandlers}>
-                <View style={styles.dragHandle} />
-              </View>
+          <ScrollView
+            ref={scrollRef}
+            style={styles.bottomSheetContent}
+            contentContainerStyle={{ paddingBottom: 80 }} // ✅ IMPORTANT
+            onScroll={(e) => (isAtTop.current = e.nativeEvent.contentOffset.y <= 0)}
+            scrollEventThrottle={16}
+          >
 
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Select Scanned Area</Text>
-          </View>
+            <View style={styles.dragHandleContainer}>
+              <View style={styles.dragHandle} />
+            </View>
 
-          {SAMPLE_SCANNED_AREAS.length > 0 ? (
-            <View style={styles.locationListContainer}>
-              {SAMPLE_SCANNED_AREAS.map((area) => (
+            <View style={styles.header}>
+              <Text style={styles.headerTitle}>Select Scanned Area</Text>
+            </View>
+
+            {scannedAreas.length > 0 && (
+              <Text style={styles.helperText}>
+                Tip: Tap and hold a card to rename or delete it.
+              </Text>
+            )}
+
+            {scannedAreas.length > 0 ? (
+              scannedAreas.map((area) => (
                 <TouchableOpacity
                   key={area.id}
                   style={styles.locationCard}
                   onPress={() => handleAreaSelect(area)}
+                  onLongPress={() => handleLongPress(area)}
                 >
                   <View style={styles.locationCardContent}>
                     <Text style={styles.locationTitle}>{area.title}</Text>
-                    <Text style={styles.locationDescription}>
-                      {area.description}
-                    </Text>
                     <View style={styles.locationInfo}>
                       <Text style={styles.locationInfoText}>
                         Date Scanned: {area.dateScanned}
@@ -262,24 +253,47 @@ export default function ScannedAreaScreen() {
                   </View>
                   <Text style={styles.arrowText}>›</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyStateContainer}>
-              <Text style={styles.emptyStateTitle}>No Scanned Areas</Text>
-              <Text style={styles.emptyStateText}>
-                Please scan an area first from the home screen to view detailed
-                soil analysis and crop recommendations.
-              </Text>
-            </View>
-          )}
+              ))
+            ) : (
+              <View style={styles.emptyStateContainer}>
+                <Text style={styles.emptyStateTitle}>No Scanned Areas</Text>
+                <Text style={styles.emptyStateText}>
+                  Scan a land area to view soil data and crop recommendations.
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+        </Animated.View>
+      )}
 
-          <View style={{ height: 30 }} />
-        </ScrollView>
-      </Animated.View>
+      {/* Rename Modal (unchanged) */}
+      <Modal visible={renameVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Rename Scanned Area</Text>
+            <TextInput
+              value={renameText}
+              onChangeText={setRenameText}
+              style={styles.modalInput}
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setRenameVisible(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={saveRename}>
+                <Text style={styles.modalSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
+
+
+
 
 const styles = StyleSheet.create({
   container: {
@@ -391,7 +405,72 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
+  helperText: {
+    fontSize: 12,
+    color: "#6B7280",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  modalOverlay: {
+  flex: 1,
+  backgroundColor: "rgba(0,0,0,0.45)",
+  justifyContent: "center",
+  alignItems: "center",
+},
+
+modalBox: {
+  width: "85%",
+  backgroundColor: "#FFFFFF",
+  borderRadius: 12,
+  padding: 20,
+  elevation: 10, // Android shadow
+},
+
+modalTitle: {
+  fontSize: 16,
+  fontWeight: "bold",
+  color: "#1B5333",
+  marginBottom: 12,
+},
+
+modalInput: {
+  borderWidth: 1,
+  borderColor: "#D1D5DB",
+  borderRadius: 8,
+  paddingVertical: 10,
+  paddingHorizontal: 12,
+  fontSize: 14,
+  marginBottom: 20,
+  color: "#111827",
+},
+
+modalActions: {
+  flexDirection: "row",
+  justifyContent: "flex-end",
+},
+
+modalButton: {
+  paddingVertical: 8,
+  paddingHorizontal: 12,
+},
+
+modalCancelText: {
+  color: "#6B7280",
+  fontSize: 14,
+  marginRight: 10,
+},
+
+modalSaveButton: {
+  marginLeft: 10,
+},
+
+modalSaveText: {
+  color: "#1B5333",
+  fontSize: 14,
+  fontWeight: "bold",
+},
+
 });
 
-export { SAMPLE_SCANNED_AREAS };
+
 
