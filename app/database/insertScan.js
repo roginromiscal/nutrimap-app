@@ -81,20 +81,19 @@ export const insertMockScan = async (callback) => {
   };
 
   /* --------------------------------------------------
-     5️⃣ Get crop recommendation (FAIL-SAFE)
+     5️⃣ Get crop recommendations (FAIL-SAFE)
   -------------------------------------------------- */
-  let recommendation = {
-    crop: 'Unknown',
-    confidence: 0
-  };
+  let recommendations = [];
 
   try {
     const result = await recommendCrop(soil);
-    if (result?.crop) {
-      recommendation.crop = result.crop;
-      recommendation.confidence = Math.round(
-        Math.max(0, Math.min(1, result.confidence ?? 0)) * 100
-      );
+    if (Array.isArray(result)) {
+      recommendations = result.map(item => ({
+        crop: item.crop,
+        confidence: Math.round(
+          Math.max(0, Math.min(1, item.confidence ?? 0)) * 100
+        )
+      }));
     }
   } catch (err) {
     console.warn('⚠️ Crop recommendation failed', err);
@@ -145,8 +144,8 @@ export const insertMockScan = async (callback) => {
         soil.moisture,
         soil.ph,
 
-        recommendation.crop,
-        recommendation.confidence,
+        recommendations[0]?.crop ?? 'Unknown',
+        recommendations[0]?.confidence ?? 0,
 
         latitude,
         longitude,

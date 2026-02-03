@@ -110,7 +110,7 @@ export default function HomeScreen() {
                   text: "View",
                   onPress: () =>
                     navigation.navigate("details", {
-                      selectedArea: inserted,
+                      selectedArea: JSON.stringify(inserted),
                     }),
                 },
                 { text: "OK" },

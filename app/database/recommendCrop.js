@@ -28,10 +28,8 @@ export const recommendCrop = async (soil) => {
     rainfall: parseFloat(item.RainFall ?? item.rainfall ?? 0),
   }));
 
-  let bestMatch = null;
-  let smallestDistance = Infinity;
-
-  normalized.forEach(item => {
+  // Calculate distances and sort by smallest distance
+  const distances = normalized.map(item => {
     const distance = Math.sqrt(
       Math.pow(soil.n - item.N, 2) +
       Math.pow(soil.p - item.P, 2) +
@@ -40,15 +38,18 @@ export const recommendCrop = async (soil) => {
       Math.pow((soil.moisture ?? soil.humidity ?? 0) - item.humidity, 2) +
       Math.pow(soil.ph - item.ph, 2)
     );
-
-    if (distance < smallestDistance) {
-      smallestDistance = distance;
-      bestMatch = item.crop;
-    }
+    return { crop: item.crop, distance };
   });
 
-  return {
-    crop: bestMatch || 'Unknown',
-    confidence: Math.max(0, 1 - smallestDistance / 200) // normalized
-  };
+  // Sort by distance and pick the top 5
+  const topRecommendations = distances
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 5)
+    .map((item, index) => ({
+      rank: index + 1,
+      crop: item.crop,
+      confidence: Math.max(0, 1 - item.distance / 200) // normalized
+    }));
+
+  return topRecommendations;
 };
