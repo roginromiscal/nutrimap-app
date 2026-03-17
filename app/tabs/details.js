@@ -14,11 +14,9 @@ import {
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { getUserScans } from "../database/getUserScans";
+import { recommendCrop } from "../database/recommendCrop";
 import { auth } from "./firebaseConfig";
 import { useMap } from "./map-context";
-
-// ✅ IMPORT YOUR REAL FUNCTION
-import { recommendCrop } from "../database/recommendCrop";
 
 const { height } = Dimensions.get("window");
 
@@ -29,7 +27,7 @@ export default function DetailsScreen() {
   const [location, setLocation] = useState(null);
   const [selectedArea, setSelectedArea] = useState(null);
   const [scannedAreas, setScannedAreas] = useState([]);
-  const [recommendations, setRecommendations] = useState([]); // ✅ NEW
+  const [recommendations, setRecommendations] = useState([]);
 
   const slideAnimation = useRef(new Animated.Value(height)).current;
   const panResponder = useRef(null);
@@ -38,30 +36,32 @@ export default function DetailsScreen() {
 
   const { mapRef, mapRegion, setMapRegion } = useMap();
 
-  /* -------------------- PARSE SELECTED AREA -------------------- */
+  /* -------------------- SAFE PARSE -------------------- */
   useEffect(() => {
-    if (params.selectedArea) {
-      try {
-        const parsed =
-          typeof params.selectedArea === "string"
-            ? JSON.parse(params.selectedArea)
-            : params.selectedArea;
+    try {
+      let parsed = params.selectedArea;
 
-        setSelectedArea(parsed);
-
-        if (parsed?.latitude && parsed?.longitude) {
-          const region = {
-            latitude: parseFloat(parsed.latitude),
-            longitude: parseFloat(parsed.longitude),
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          };
-          setMapRegion(region);
-          mapRef.current?.animateToRegion(region, 500);
-        }
-      } catch (err) {
-        console.error("Failed to parse selectedArea", err);
+      if (typeof parsed === "string") {
+        parsed = JSON.parse(parsed);
       }
+
+      if (!parsed) return;
+
+      setSelectedArea(parsed);
+
+      if (parsed.latitude && parsed.longitude) {
+        const region = {
+          latitude: parseFloat(parsed.latitude),
+          longitude: parseFloat(parsed.longitude),
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        };
+        setMapRegion(region);
+        mapRef.current?.animateToRegion(region, 500);
+      }
+
+    } catch (err) {
+      console.log("Parse error:", err);
     }
   }, [params.selectedArea]);
 
@@ -69,10 +69,7 @@ export default function DetailsScreen() {
   useFocusEffect(
     useCallback(() => {
       const uid = auth.currentUser?.uid ?? "local";
-      getUserScans(uid)
-        .then(setScannedAreas)
-        .catch(err => console.error("Failed to load scans", err));
-
+      getUserScans(uid).then(setScannedAreas);
       slideAnimation.setValue(0);
     }, [])
   );
@@ -92,80 +89,92 @@ export default function DetailsScreen() {
       };
       setLocation(region);
 
-      if (!mapRegion) {
-        setMapRegion(region);
-      }
+      if (!mapRegion) setMapRegion(region);
     })();
   }, []);
 
-  /* -------------------- RECOMMENDATION FIX -------------------- */
+  /* -------------------- NORMALIZE DATA -------------------- */
+  const normalizeSoil = (area) => {
+    if (!area) return null;
+
+    return {
+      nitrogen: area.nitrogen ?? area.n ?? 0,
+      phosphorus: area.phosphorus ?? area.p ?? 0,
+      potassium: area.potassium ?? area.k ?? 0,
+      temperature: area.temperature ?? 0,
+      moisture: area.moisture ?? 0,
+      ph: area.ph ?? 0,
+    };
+  };
+
+  const soil = normalizeSoil(selectedArea);
+
+  /* -------------------- RECOMMENDATIONS -------------------- */
   useEffect(() => {
-    const loadRecommendations = async () => {
+    const load = async () => {
       if (!selectedArea) return;
 
       try {
-        // ✅ USE SAVED DATA IF EXISTS
         if (selectedArea.recommended_crop) {
           const parsed = JSON.parse(selectedArea.recommended_crop);
           setRecommendations(parsed);
           return;
         }
 
-        // ✅ OTHERWISE GENERATE LIVE
-        const soil = {
-          n: Number(selectedArea.nitrogen || 0),
-          p: Number(selectedArea.phosphorus || 0),
-          k: Number(selectedArea.potassium || 0),
-          temperature: Number(selectedArea.temperature || 0),
-          moisture: Number(selectedArea.moisture || 0),
-          ph: Number(selectedArea.ph || 0),
-        };
-
-        const result = await recommendCrop(soil);
-        setRecommendations(result);
-
-      } catch (err) {
-        console.log("Failed to load recommendations:", err);
+      const result = await recommendCrop({
+        n: soil.nitrogen,
+        p: soil.phosphorus,
+        k: soil.potassium,
+        temperature: soil.temperature,
+        moisture: soil.moisture,
+        ph: soil.ph,
+      });
+        setRecommendations(result || []);
+      } catch {
         setRecommendations([]);
       }
     };
 
-    loadRecommendations();
+    load();
   }, [selectedArea]);
 
-  /* -------------------- BOTTOM SHEET DRAG -------------------- */
+  /* -------------------- GRAPH DATA (ONLY NPK) -------------------- */
+const soilData = [
+  { label: "N", value: Number(soil?.nitrogen || 0), color: "#4CAF50" },
+  { label: "P", value: Number(soil?.phosphorus || 0), color: "#2196F3" },
+  { label: "K", value: Number(soil?.potassium || 0), color: "#FF9800" },
+];
+
+  const maxVal = Math.max(...soilData.map(d => d.value), 1);
+
+  /* -------------------- DRAG -------------------- */
   useEffect(() => {
     panResponder.current = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) =>
+      onMoveShouldSetPanResponder: (e, g) =>
         Math.abs(g.dy) > Math.abs(g.dx) && g.dy > 5 && isAtTop.current,
 
-      onPanResponderMove: (_, g) => {
+      onPanResponderMove: (e, g) => {
         if (g.dy > 0) slideAnimation.setValue(g.dy);
       },
 
-      onPanResponderRelease: (_, g) => {
-        if (g.dy > 200) {
-          Animated.timing(slideAnimation, {
-            toValue: height,
-            duration: 300,
-            useNativeDriver: false,
-          }).start(() => {
+      onPanResponderRelease: (e, g) => {
+        const shouldDismiss = g.dy > 200;
+
+        Animated.timing(slideAnimation, {
+          toValue: shouldDismiss ? height : 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => {
+          if (shouldDismiss) {
             router.replace("/tabs/home");
-          });
-        } else {
-          Animated.timing(slideAnimation, {
-            toValue: 0,
-            duration: 300,
-            useNativeDriver: false,
-          }).start();
-        }
+          }
+        });
       },
     });
   }, []);
-  
 
-  /* -------------------- RENDER -------------------- */
+  /* -------------------- UI -------------------- */
   return (
     <View style={styles.container}>
       <MapView
@@ -176,9 +185,7 @@ export default function DetailsScreen() {
         showsUserLocation
         onRegionChangeComplete={setMapRegion}
       >
-        {location && (
-          <Marker coordinate={location} pinColor="blue" />
-        )}
+        {location && <Marker coordinate={location} pinColor="blue" />}
 
         {scannedAreas.map(
           (area) =>
@@ -192,29 +199,27 @@ export default function DetailsScreen() {
                 }}
                 title={area.title}
                 pinColor="green"
-                onPress={() => setSelectedArea(area)}
+                onPress={() =>
+                  router.push({
+                    pathname: "/details",
+                    params: {
+                      selectedArea: JSON.stringify(area),
+                    },
+                  })
+                }
               />
             )
         )}
       </MapView>
 
-      <Animated.View
-        style={[
-          styles.bottomSheet,
-          { transform: [{ translateY: slideAnimation }] },
-        ]}
-      >
+      <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnimation }] }]} {...panResponder.current?.panHandlers}>
         <ScrollView
           ref={scrollRef}
           style={styles.bottomSheetContent}
           onScroll={e => (isAtTop.current = e.nativeEvent.contentOffset.y <= 0)}
           scrollEventThrottle={16}
-          nestedScrollEnabled
         >
-          <View
-            style={styles.dragHandleContainer}
-            {...panResponder.current?.panHandlers}
-          >
+          <View style={styles.dragHandleContainer}>
             <View style={styles.dragHandle} />
           </View>
 
@@ -240,23 +245,62 @@ export default function DetailsScreen() {
                 </Text>
               </View>
 
-              {/* 🌱 CROP RECOMMENDATIONS */}
+              {/* 📊 NPK GRAPH ONLY */}
+              <View style={styles.chartContainer}>
+                <Text style={styles.chartTitle}>NPK Levels</Text>
+
+                <View style={styles.chartArea}>
+                  <View style={styles.barsDisplayContainer}>
+                    {soilData.map((item, i) => {
+                      const rawHeight = (item.value / maxVal) * 180;
+                      const h = Math.max(rawHeight, 10); // ✅ ensures visible bars
+
+                      return (
+                        <View key={i} style={styles.barItemContainer}>
+                          <View style={[styles.barItem, { height: h, backgroundColor: item.color }]}>
+                            <Text style={styles.barText}>{item.value}</Text>
+                          </View>
+                          <Text style={styles.barLabel}>{item.label}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              </View>
+
+              {/* 📋 OTHER DATA */}
+              <View style={styles.propertiesContainer}>
+                <View style={styles.propertyRow}>
+                  <Text style={styles.propertyLabel}>Moisture</Text>
+                  <Text style={styles.propertyValue}>{soil?.moisture}</Text>
+                </View>
+                <View style={styles.propertyRow}>
+                  <Text style={styles.propertyLabel}>Temperature</Text>
+                  <Text style={styles.propertyValue}>{soil?.temperature}°C</Text>
+                </View>
+                <View style={styles.propertyRow}>
+                  <Text style={styles.propertyLabel}>pH Level</Text>
+                  <Text style={styles.propertyValue}>{soil?.ph}</Text>
+                </View>
+              </View>
+
+              {/* 🌱 CROPS */}
               <View style={styles.cropContainer}>
                 <Text style={styles.cropTitle}>Crop Recommendations</Text>
 
                 {recommendations.length > 0 ? (
-                  recommendations.map((rec, index) => (
-                    <View key={index} style={styles.cropCard}>
+                  recommendations.map((rec, i) => (
+                    <View key={i} style={styles.cropCard}>
                       <Image
                         source={{ uri: "https://via.placeholder.com/80" }}
                         style={styles.cropImage}
                       />
                       <View style={styles.cropInfo}>
                         <Text style={styles.cropName}>
-                          {index + 1}. {rec.crop}
+                          {i + 1}. {rec.crop}
                         </Text>
                         <Text style={styles.cropDescription}>
-                          Confidence: {(rec.confidence * 100).toFixed(1)}%
+                          Confidence: {rec.confidence}%
                         </Text>
                       </View>
                     </View>
@@ -278,6 +322,8 @@ export default function DetailsScreen() {
     </View>
   );
 }
+
+/* ⚠️ KEEP YOUR STYLES BELOW UNCHANGED */
 
 /* ⚠️ STYLES ARE UNTOUCHED BELOW */
 
@@ -396,6 +442,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     height: "100%",
     paddingHorizontal: 4,
+    flex: 1,
   },
   barItemContainer: {
     alignItems: "center",

@@ -3,6 +3,7 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   StyleSheet,
@@ -29,6 +30,7 @@ export default function HomeScreen() {
   } = useMap();
 
   const [scannedAreas, setScannedAreas] = useState([]);
+  const [isScanning, setIsScanning] = useState(false);
 
   const loadScans = async () => {
     const uid = auth.currentUser?.uid ?? "local";
@@ -85,11 +87,11 @@ export default function HomeScreen() {
                 }}
                 title={area.title}
                 pinColor="green"
-                onPress={() =>
-                  navigation.navigate("details", {
-                    selectedArea: area, // ✅ FIXED (no stringify)
-                  })
-                }
+              onPress={() =>
+                navigation.navigate("details", {
+                  selectedArea: JSON.stringify(area), // ✅ ALWAYS STRING
+                })
+              }
               />
             )
         )}
@@ -98,7 +100,9 @@ export default function HomeScreen() {
       <View style={styles.scanButtonContainer}>
         <TouchableOpacity
           style={styles.scanButton}
+          disabled={isScanning}
           onPress={async () => {
+            setIsScanning(true);
             const inserted = await new Promise((resolve) =>
               insertMockScan(resolve)
             );
@@ -110,16 +114,21 @@ export default function HomeScreen() {
                 {
                   text: "View",
                   onPress: () =>
-                    navigation.navigate("details", {
-                      selectedArea: inserted, // ✅ FIXED
-                    }),
+                  navigation.navigate("details", {
+                    selectedArea: JSON.stringify(inserted), // ✅ FIX
+                  }),
                 },
                 { text: "OK" },
               ]);
             }
+            setIsScanning(false);
           }}
         >
-          <Ionicons name="scan-outline" size={30} color="#1B5333" />
+          {isScanning ? (
+            <ActivityIndicator size="large" color="#1B5333" />
+          ) : (
+            <Ionicons name="scan-outline" size={30} color="#1B5333" />
+          )}
         </TouchableOpacity>
       </View>
     </View>

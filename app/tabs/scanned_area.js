@@ -135,13 +135,7 @@ export default function ScannedAreaScreen() {
     router.push({
       pathname: "/tabs/details",
       params: {
-        selectedArea: JSON.stringify({
-          id: area.id,
-          title: area.title,
-          latitude: area.latitude,
-          longitude: area.longitude,
-          dateScanned: area.dateScanned,
-        }),
+        selectedArea: JSON.stringify(area), // ✅ FULL OBJECT
       },
     });
   };
