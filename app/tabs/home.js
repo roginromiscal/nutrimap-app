@@ -30,15 +30,18 @@ export default function HomeScreen() {
 
   const [scannedAreas, setScannedAreas] = useState([]);
 
-  // Load scans
+  const loadScans = async () => {
+    const uid = auth.currentUser?.uid ?? "local";
+    const data = await getUserScans(uid);
+    setScannedAreas(data);
+  };
+
   useFocusEffect(
     useCallback(() => {
-      const uid = auth.currentUser?.uid ?? "local";
-      getUserScans(uid).then(setScannedAreas);
+      loadScans();
     }, [])
   );
 
-  // Get device location
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -60,7 +63,6 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* MAP */}
       <MapView
         ref={mapRef}
         style={styles.map}
@@ -69,25 +71,23 @@ export default function HomeScreen() {
         showsUserLocation
         onRegionChangeComplete={setMapRegion}
       >
-        {location && (
-          <Marker coordinate={location} pinColor="blue" />
-        )}
+        {location && <Marker coordinate={location} pinColor="blue" />}
 
         {scannedAreas.map(
-          area =>
+          (area) =>
             area.latitude &&
             area.longitude && (
               <Marker
                 key={area.id}
                 coordinate={{
-                  latitude: area.latitude,
-                  longitude: area.longitude,
+                  latitude: parseFloat(area.latitude),
+                  longitude: parseFloat(area.longitude),
                 }}
                 title={area.title}
                 pinColor="green"
                 onPress={() =>
                   navigation.navigate("details", {
-                    selectedArea: area,
+                    selectedArea: area, // ✅ FIXED (no stringify)
                   })
                 }
               />
@@ -95,22 +95,23 @@ export default function HomeScreen() {
         )}
       </MapView>
 
-      {/* ✅ SCAN BUTTON — HOME ONLY */}
       <View style={styles.scanButtonContainer}>
         <TouchableOpacity
           style={styles.scanButton}
           onPress={async () => {
-            const inserted = await new Promise(resolve =>
+            const inserted = await new Promise((resolve) =>
               insertMockScan(resolve)
             );
 
             if (inserted) {
+              await loadScans(); // ✅ IMPORTANT FIX
+
               Alert.alert("Scan saved", "Area scanned successfully", [
                 {
                   text: "View",
                   onPress: () =>
                     navigation.navigate("details", {
-                      selectedArea: JSON.stringify(inserted),
+                      selectedArea: inserted, // ✅ FIXED
                     }),
                 },
                 { text: "OK" },

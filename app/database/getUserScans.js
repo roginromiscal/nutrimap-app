@@ -21,6 +21,10 @@ export const getUserScans = async (uid) => {
         scan.title && scan.title.trim() !== ''
           ? scan.title
           : `Scanned Area ${index + 1}`,
+      dateScanned:
+        scan.dateScanned && !isNaN(new Date(scan.dateScanned).getTime())
+          ? scan.dateScanned
+          : new Date().toISOString(),
     }));
 
     return processed;

@@ -2,20 +2,23 @@ import * as Location from "expo-location";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-    Animated,
-    Dimensions,
-    Image,
-    PanResponder,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Dimensions,
+  Image,
+  PanResponder,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { getUserScans } from "../database/getUserScans";
 import { auth } from "./firebaseConfig";
 import { useMap } from "./map-context";
+
+// ✅ IMPORT YOUR REAL FUNCTION
+import { recommendCrop } from "../database/recommendCrop";
 
 const { height } = Dimensions.get("window");
 
@@ -26,6 +29,7 @@ export default function DetailsScreen() {
   const [location, setLocation] = useState(null);
   const [selectedArea, setSelectedArea] = useState(null);
   const [scannedAreas, setScannedAreas] = useState([]);
+  const [recommendations, setRecommendations] = useState([]); // ✅ NEW
 
   const slideAnimation = useRef(new Animated.Value(height)).current;
   const panResponder = useRef(null);
@@ -47,8 +51,8 @@ export default function DetailsScreen() {
 
         if (parsed?.latitude && parsed?.longitude) {
           const region = {
-            latitude: parsed.latitude,
-            longitude: parsed.longitude,
+            latitude: parseFloat(parsed.latitude),
+            longitude: parseFloat(parsed.longitude),
             latitudeDelta: 0.01,
             longitudeDelta: 0.01,
           };
@@ -61,7 +65,7 @@ export default function DetailsScreen() {
     }
   }, [params.selectedArea]);
 
-  /* -------------------- LOAD SCANS FOR MARKERS -------------------- */
+  /* -------------------- LOAD SCANS -------------------- */
   useFocusEffect(
     useCallback(() => {
       const uid = auth.currentUser?.uid ?? "local";
@@ -69,7 +73,7 @@ export default function DetailsScreen() {
         .then(setScannedAreas)
         .catch(err => console.error("Failed to load scans", err));
 
-      slideAnimation.setValue(0); // ✅ reset bottom sheet every time
+      slideAnimation.setValue(0);
     }, [])
   );
 
@@ -94,6 +98,41 @@ export default function DetailsScreen() {
     })();
   }, []);
 
+  /* -------------------- RECOMMENDATION FIX -------------------- */
+  useEffect(() => {
+    const loadRecommendations = async () => {
+      if (!selectedArea) return;
+
+      try {
+        // ✅ USE SAVED DATA IF EXISTS
+        if (selectedArea.recommended_crop) {
+          const parsed = JSON.parse(selectedArea.recommended_crop);
+          setRecommendations(parsed);
+          return;
+        }
+
+        // ✅ OTHERWISE GENERATE LIVE
+        const soil = {
+          n: Number(selectedArea.nitrogen || 0),
+          p: Number(selectedArea.phosphorus || 0),
+          k: Number(selectedArea.potassium || 0),
+          temperature: Number(selectedArea.temperature || 0),
+          moisture: Number(selectedArea.moisture || 0),
+          ph: Number(selectedArea.ph || 0),
+        };
+
+        const result = await recommendCrop(soil);
+        setRecommendations(result);
+
+      } catch (err) {
+        console.log("Failed to load recommendations:", err);
+        setRecommendations([]);
+      }
+    };
+
+    loadRecommendations();
+  }, [selectedArea]);
+
   /* -------------------- BOTTOM SHEET DRAG -------------------- */
   useEffect(() => {
     panResponder.current = PanResponder.create({
@@ -112,7 +151,7 @@ export default function DetailsScreen() {
             duration: 300,
             useNativeDriver: false,
           }).start(() => {
-            router.replace("/tabs/home"); // ✅ drag down → HOME
+            router.replace("/tabs/home");
           });
         } else {
           Animated.timing(slideAnimation, {
@@ -124,6 +163,7 @@ export default function DetailsScreen() {
       },
     });
   }, []);
+  
 
   /* -------------------- RENDER -------------------- */
   return (
@@ -137,16 +177,19 @@ export default function DetailsScreen() {
         onRegionChangeComplete={setMapRegion}
       >
         {location && (
-          <Marker coordinate={location} title="Your Location" pinColor="blue" />
+          <Marker coordinate={location} pinColor="blue" />
         )}
 
         {scannedAreas.map(
-          area =>
+          (area) =>
             area.latitude &&
             area.longitude && (
               <Marker
                 key={area.id}
-                coordinate={{ latitude: area.latitude, longitude: area.longitude }}
+                coordinate={{
+                  latitude: parseFloat(area.latitude),
+                  longitude: parseFloat(area.longitude),
+                }}
                 title={area.title}
                 pinColor="green"
                 onPress={() => setSelectedArea(area)}
@@ -155,12 +198,12 @@ export default function DetailsScreen() {
         )}
       </MapView>
 
-        <Animated.View
-          style={[
-            styles.bottomSheet,
-            { transform: [{ translateY: slideAnimation }] },
-          ]}
-        >
+      <Animated.View
+        style={[
+          styles.bottomSheet,
+          { transform: [{ translateY: slideAnimation }] },
+        ]}
+      >
         <ScrollView
           ref={scrollRef}
           style={styles.bottomSheetContent}
@@ -170,7 +213,7 @@ export default function DetailsScreen() {
         >
           <View
             style={styles.dragHandleContainer}
-            {...panResponder.current?.panHandlers}  
+            {...panResponder.current?.panHandlers}
           >
             <View style={styles.dragHandle} />
           </View>
@@ -181,7 +224,6 @@ export default function DetailsScreen() {
                 <Text style={styles.headerTitle}>Land Area Detail</Text>
               </View>
 
-              {/* BACK TO SCANNED AREA */}
               <TouchableOpacity
                 style={styles.backButton}
                 onPress={() => router.push("/tabs/scanned_area")}
@@ -198,89 +240,37 @@ export default function DetailsScreen() {
                 </Text>
               </View>
 
-              {/* NPK */}
-              <View style={styles.chartContainer}>
-                <Text style={styles.chartTitle}>NPK Nutrients</Text>
-
-                <View style={styles.chartArea}>
-                  <View style={styles.chartYAxis}>
-                    <Text style={styles.yAxisText}>100</Text>
-                    <Text style={styles.yAxisText}>75</Text>
-                    <Text style={styles.yAxisText}>50</Text>
-                    <Text style={styles.yAxisText}>25</Text>
-                    <Text style={styles.yAxisText}>0</Text>
-                  </View>
-
-                  <View style={styles.barsSection}>
-                    <View style={styles.barsDisplayContainer}>
-                      {[
-                        { label: "N", value: selectedArea.nitrogen, color: "#4A90E2" },
-                        { label: "P", value: selectedArea.phosphorus, color: "#50C878" },
-                        { label: "K", value: selectedArea.potassium, color: "#FFB84D" },
-                      ].map((item, i) => (
-                        <View key={i} style={styles.barItemContainer}>
-                          <View
-                            style={[
-                              styles.barItem,
-                              {
-                                height: Math.min(item.value * 2.2, 220),
-                                backgroundColor: item.color,
-                              },
-                            ]}
-                          >
-                            <Text style={styles.barText}>{item.value}</Text>
-                          </View>
-                          <Text style={styles.barLabel}>{item.label}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                </View>
-              </View>
-
-              {/* SOIL */}
-              <View style={styles.propertiesContainer}>
-                <View style={styles.propertyRow}>
-                  <Text style={styles.propertyLabel}>Moisture</Text>
-                  <Text style={styles.propertyValue}>{selectedArea.moisture} %</Text>
-                </View>
-                <View style={styles.propertyRow}>
-                  <Text style={styles.propertyLabel}>Temperature</Text>
-                  <Text style={styles.propertyValue}>{selectedArea.temperature} °C</Text>
-                </View>
-                <View style={styles.propertyRow}>
-                  <Text style={styles.propertyLabel}>pH</Text>
-                  <Text style={styles.propertyValue}>{selectedArea.ph}</Text>
-                </View>
-              </View>
-
-              {/* CROP */}
+              {/* 🌱 CROP RECOMMENDATIONS */}
               <View style={styles.cropContainer}>
-                <Text style={styles.cropTitle}>Crop Recommendation</Text>
-                <View style={styles.cropCard}>
-                  <Image
-                    source={{ uri: "https://via.placeholder.com/80" }}
-                    style={styles.cropImage}
-                  />
-                  <View style={styles.cropInfo}>
-                    <Text style={styles.cropName}>
-                      {selectedArea.recommended_crop || "N/A"}
-                    </Text>
-                    <Text style={styles.cropDescription}>
-                      Based on soil conditions
-                    </Text>
-                  </View>
-                </View>
+                <Text style={styles.cropTitle}>Crop Recommendations</Text>
+
+                {recommendations.length > 0 ? (
+                  recommendations.map((rec, index) => (
+                    <View key={index} style={styles.cropCard}>
+                      <Image
+                        source={{ uri: "https://via.placeholder.com/80" }}
+                        style={styles.cropImage}
+                      />
+                      <View style={styles.cropInfo}>
+                        <Text style={styles.cropName}>
+                          {index + 1}. {rec.crop}
+                        </Text>
+                        <Text style={styles.cropDescription}>
+                          Confidence: {(rec.confidence * 100).toFixed(1)}%
+                        </Text>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <Text>No recommendations available</Text>
+                )}
               </View>
 
               <View style={{ height: 100 }} />
             </View>
           ) : (
             <View style={styles.emptyStateContainer}>
-              <Text style={styles.emptyStateTitle}>No Area Selected</Text>
-              <Text style={styles.emptyStateText}>
-                Select a scanned area to view details.
-              </Text>
+              <Text>No Area Selected</Text>
             </View>
           )}
         </ScrollView>

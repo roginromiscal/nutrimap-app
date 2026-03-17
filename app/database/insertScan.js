@@ -3,9 +3,6 @@ import { auth } from '../tabs/firebaseConfig';
 import { recommendCrop } from './recommendCrop';
 import { db } from './sqlite';
 
-/* --------------------------------------------------
-   UUID v4 generator (Expo-safe)
--------------------------------------------------- */
 const generateUUID = () => {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0;
@@ -14,15 +11,10 @@ const generateUUID = () => {
   });
 };
 
-/* --------------------------------------------------
-   MAIN SCAN FUNCTION
--------------------------------------------------- */
 export const insertMockScan = async (callback) => {
   const uid = auth.currentUser?.uid ?? 'local';
 
-  /* --------------------------------------------------
-     1️⃣ Get scan count (for auto title)
-  -------------------------------------------------- */
+  // TITLE
   let scanCount = 0;
   try {
     const rows = await db.getAllAsync(
@@ -30,15 +22,11 @@ export const insertMockScan = async (callback) => {
       [uid]
     );
     scanCount = rows?.[0]?.count ?? 0;
-  } catch (err) {
-    console.warn('⚠️ Failed to get scan count', err);
-  }
+  } catch {}
 
   const title = `Scanned Area ${scanCount + 1}`;
 
-  /* --------------------------------------------------
-     2️⃣ Get location (safe + permission aware)
-  -------------------------------------------------- */
+  // LOCATION
   let latitude = null;
   let longitude = null;
   let coordinates = '';
@@ -51,83 +39,54 @@ export const insertMockScan = async (callback) => {
       longitude = loc.coords.longitude;
       coordinates = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
     }
-  } catch (err) {
-    console.warn('⚠️ Location unavailable', err);
-  }
+  } catch {}
 
-  /* --------------------------------------------------
-     3️⃣ Soil data (MOCK – ESP32 compatible)
-     Replace this with real sensor payload later
-  -------------------------------------------------- */
-  const soilRaw = {
-    n: Math.round((Math.random() * 80 + 20) * 10) / 10,
-    p: Math.round((Math.random() * 70 + 10) * 10) / 10,
-    k: Math.round((Math.random() * 60 + 10) * 10) / 10,
-    temperature: Math.round((Math.random() * 10 + 20) * 10) / 10,
-    moisture: Math.round((Math.random() * 40 + 40) * 10) / 10,
+  // MOCK SOIL DATA
+  const soil = {
+    n: Math.round(Math.random() * 60 + 30),
+    p: Math.round(Math.random() * 40 + 20),
+    k: Math.round(Math.random() * 40 + 20),
+    temperature: Math.round(Math.random() * 10 + 20),
+    moisture: Math.round(Math.random() * 40 + 40),
     ph: Math.round((Math.random() * 2 + 5.5) * 10) / 10
   };
 
-  /* --------------------------------------------------
-     4️⃣ Sanitize soil data (sensor-safe)
-  -------------------------------------------------- */
-  const soil = {
-    n: Number(soilRaw.n) || 0,
-    p: Number(soilRaw.p) || 0,
-    k: Number(soilRaw.k) || 0,
-    temperature: Number(soilRaw.temperature) || 0,
-    moisture: Number(soilRaw.moisture) || 0,
-    ph: Number(soilRaw.ph) || 7
-  };
-
-  /* --------------------------------------------------
-     5️⃣ Get crop recommendations (FAIL-SAFE)
-  -------------------------------------------------- */
+  // ✅ GET TOP 5 CROPS
   let recommendations = [];
-
   try {
     const result = await recommendCrop(soil);
-    if (Array.isArray(result)) {
-      recommendations = result.map(item => ({
-        crop: item.crop,
-        confidence: Math.round(
-          Math.max(0, Math.min(1, item.confidence ?? 0)) * 100
-        )
-      }));
-    }
+
+    recommendations = (result || []).slice(0, 5).map(item => ({
+      crop: item.crop || "Unknown",
+      confidence: Math.round((item.confidence || 0) * 100)
+    }));
+
   } catch (err) {
-    console.warn('⚠️ Crop recommendation failed', err);
+    console.warn('Recommendation error', err);
   }
 
   const dateScanned = new Date().toISOString();
 
-  /* --------------------------------------------------
-     6️⃣ Insert scan into SQLite
-  -------------------------------------------------- */
   try {
     await db.runAsync(
       `
       INSERT INTO scans (
         scan_uuid,
         user_uid,
-
         nitrogen,
         phosphorus,
         potassium,
         temperature,
         moisture,
         ph,
-
         recommended_crop,
         confidence,
-
         latitude,
         longitude,
         title,
         description,
         coordinates,
         dateScanned,
-
         synced,
         created_at
       )
@@ -136,7 +95,6 @@ export const insertMockScan = async (callback) => {
       [
         generateUUID(),
         uid,
-
         soil.n,
         soil.p,
         soil.k,
@@ -144,8 +102,8 @@ export const insertMockScan = async (callback) => {
         soil.moisture,
         soil.ph,
 
-        recommendations[0]?.crop ?? 'Unknown',
-        recommendations[0]?.confidence ?? 0,
+        JSON.stringify(recommendations), // ✅ important
+        0,
 
         latitude,
         longitude,
@@ -153,15 +111,11 @@ export const insertMockScan = async (callback) => {
         '',
         coordinates,
         dateScanned,
-
         0,
         dateScanned
       ]
     );
 
-    /* --------------------------------------------------
-       7️⃣ Return latest scan
-    -------------------------------------------------- */
     const rows = await db.getAllAsync(
       `SELECT * FROM scans WHERE user_uid = ? ORDER BY created_at DESC LIMIT 1`,
       [uid]
@@ -170,7 +124,7 @@ export const insertMockScan = async (callback) => {
     callback && callback(rows?.[0] ?? null);
 
   } catch (err) {
-    console.error('❌ Failed to insert scan', err);
+    console.error('Insert error', err);
     callback && callback(null);
   }
 };

@@ -1,55 +1,63 @@
 import { loadCropDataAsync } from './cropStore';
 
-// fallback static data if DB is not available
-const FALLBACK_CROPS = [
-  { crop: 'Corn', N: 70, P: 40, K: 60, temperature: 25, humidity: 60, ph: 6.5 },
-  { crop: 'Rice', N: 60, P: 50, K: 70, temperature: 26, humidity: 75, ph: 6.2 },
-  { crop: 'Vegetables', N: 80, P: 60, K: 55, temperature: 22, humidity: 65, ph: 6.8 },
-];
-
 export const recommendCrop = async (soil) => {
+
   let cropData = [];
   try {
     cropData = await loadCropDataAsync();
-  } catch (err) {
-    console.warn('Could not load crop data from DB, using fallback', err);
-    cropData = FALLBACK_CROPS;
+  } catch {
+    return [];
   }
 
-  // Normalize rows if they come from DB (column names may vary)
   const normalized = cropData.map(item => ({
-    crop: item.crop ?? item.Crops ?? item.crop_name ?? item.CROP ?? 'Unknown',
-    N: parseFloat(item.N ?? item.n ?? item.Nitrogen ?? 0),
-    P: parseFloat(item.P ?? item.p ?? item.Phosphorus ?? 0),
-    K: parseFloat(item.K ?? item.k ?? item.Potassium ?? 0),
-    temperature: parseFloat(item.Temperature ?? item.temperature ?? item.temp ?? 0),
-    humidity: parseFloat(item.Humidity ?? item.humidity ?? item.h ?? 0),
-    ph: parseFloat(item['pH'] ?? item.ph ?? 0),
-    rainfall: parseFloat(item.RainFall ?? item.rainfall ?? 0),
+    crop: item.crop ?? item.Crops ?? 'Unknown',
+    N: Number(item.N ?? item.n ?? 0),
+    P: Number(item.P ?? item.p ?? 0),
+    K: Number(item.K ?? item.k ?? 0),
+    temperature: Number(item.temperature ?? item.Temperature ?? 0),
+    humidity: Number(item.humidity ?? item.Humidity ?? 0),
+    ph: Number(item.ph ?? item['pH'] ?? 0),
   }));
 
-  // Calculate distances and sort by smallest distance
+  // ✅ STEP 1: compute distances
   const distances = normalized.map(item => {
     const distance = Math.sqrt(
       Math.pow(soil.n - item.N, 2) +
       Math.pow(soil.p - item.P, 2) +
       Math.pow(soil.k - item.K, 2) +
       Math.pow(soil.temperature - item.temperature, 2) +
-      Math.pow((soil.moisture ?? soil.humidity ?? 0) - item.humidity, 2) +
+      Math.pow(soil.moisture - item.humidity, 2) +
       Math.pow(soil.ph - item.ph, 2)
     );
+
     return { crop: item.crop, distance };
   });
 
-  // Sort by distance and pick the top 5
-  const topRecommendations = distances
+  // ✅ STEP 2: keep ONLY best per crop (remove duplicates)
+  const uniqueMap = new Map();
+
+  for (let item of distances) {
+    if (!uniqueMap.has(item.crop)) {
+      uniqueMap.set(item.crop, item);
+    } else {
+      // keep the smaller distance
+      const existing = uniqueMap.get(item.crop);
+      if (item.distance < existing.distance) {
+        uniqueMap.set(item.crop, item);
+      }
+    }
+  }
+
+  // ✅ STEP 3: convert back to array
+  const uniqueDistances = Array.from(uniqueMap.values());
+
+  // ✅ STEP 4: sort + limit to top 5
+  return uniqueDistances
     .sort((a, b) => a.distance - b.distance)
-    .slice(0, 5)
+    .slice(0, 5) // will return less if not enough
     .map((item, index) => ({
       rank: index + 1,
       crop: item.crop,
-      confidence: Math.max(0, 1 - item.distance / 200) // normalized
+      confidence: Math.max(0.1, 1 - item.distance / 150)
     }));
-
-  return topRecommendations;
 };

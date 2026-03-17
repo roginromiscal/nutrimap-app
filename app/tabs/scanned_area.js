@@ -111,31 +111,37 @@ export default function ScannedAreaScreen() {
   }, []);
 
   const handleAreaSelect = (area) => {
-    if (area.latitude && area.longitude) {
-      const region = {
-        latitude: area.latitude,
-        longitude: area.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      };
-
-      // ✅ Zoom shared map to selected area
-      setMapRegion(region);
-      mapRef.current?.animateToRegion(region, 500);
-
-      // ✅ Bring bottom sheet back up if dismissed
-      Animated.timing(slideAnimation, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: false,
-      }).start();
+    if (!area || !area.latitude || !area.longitude) {
+      Alert.alert("Invalid Area", "The selected area is invalid.");
+      return;
     }
 
-    // ✅ Navigate to details screen
+    const region = {
+      latitude: parseFloat(area.latitude),
+      longitude: parseFloat(area.longitude),
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    };
+
+    setMapRegion(region);
+    mapRef.current?.animateToRegion(region, 500);
+
+    Animated.timing(slideAnimation, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: false,
+    }).start();
+
     router.push({
       pathname: "/tabs/details",
       params: {
-        selectedArea: JSON.stringify(area),
+        selectedArea: JSON.stringify({
+          id: area.id,
+          title: area.title,
+          latitude: area.latitude,
+          longitude: area.longitude,
+          dateScanned: area.dateScanned,
+        }),
       },
     });
   };
@@ -196,7 +202,10 @@ export default function ScannedAreaScreen() {
             area.longitude && (
               <Marker
                 key={area.id}
-                coordinate={{ latitude: area.latitude, longitude: area.longitude }}
+                coordinate={{
+                  latitude: parseFloat(area.latitude),
+                  longitude: parseFloat(area.longitude),
+                }}
                 title={area.title}
                 pinColor="green"
               />
@@ -469,7 +478,6 @@ modalSaveText: {
   fontSize: 14,
   fontWeight: "bold",
 },
-
 });
 
 

@@ -2,14 +2,14 @@ import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/nativ
 import * as Location from "expo-location";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Animated,
-  Dimensions,
-  Image,
-  PanResponder,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    Animated,
+    Dimensions,
+    Image,
+    PanResponder,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 import { useMap } from "./map-context";
@@ -123,7 +123,10 @@ export default function DetailsScreen() {
       >
         {location && (
           <Marker
-            coordinate={location}
+            coordinate={{
+              latitude: parseFloat(location.latitude),
+              longitude: parseFloat(location.longitude),
+            }}
             title="Your Location"
             pinColor="blue"
           />
