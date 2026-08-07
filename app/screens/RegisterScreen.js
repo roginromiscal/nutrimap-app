@@ -18,7 +18,7 @@ import {
   signOut
 } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
-import { auth, db } from "../../firebaseConfig";
+import { auth, db } from "../../lib/firebase";
 
 export default function RegisterScreen() {
   const router = useRouter();

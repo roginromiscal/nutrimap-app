@@ -7,7 +7,6 @@
     "icon": "./assets/images/nutrimap-logo.png",
     "scheme": "nutrimap",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -15,22 +14,25 @@
       }
     },
     "android": {
+      "package": "com.nutrimap",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/nutrimap-icon-adaptive.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
-      ]
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyDXDigpAflVjw4yFlzwJ8y9ZcgeKQ1ITSk"
+        }
+      }
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/nutrimap-logo.png"
     },
     "plugins": [
       "expo-router",
@@ -52,11 +54,30 @@
           "locationAlwaysAndWhenInUsePermission": "Allow Nutrimap to use your location."
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "updates": {
+      "enabled": false,
+      "fallbackToCacheTimeout": 0,
+      "checkAutomatically": "NEVER"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "61d7e134-bd19-4215-882e-d172e59bcad8"
+      }
     }
   }
 }

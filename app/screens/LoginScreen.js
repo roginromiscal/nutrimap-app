@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   onAuthStateChanged,
@@ -22,7 +22,7 @@ import {
 } from "firebase/auth";
 
 import { doc, updateDoc } from "firebase/firestore";
-import { auth, db } from "../../firebaseConfig";
+import { auth, db } from "../../lib/firebase";
 
 export default function LoginScreen() {
 

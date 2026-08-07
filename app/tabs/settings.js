@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { onAuthStateChanged, sendPasswordResetEmail, signOut } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Image, Linking, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { auth } from "../../firebaseConfig";
+import { auth } from "../../lib/firebase";
 
 export default function SettingsScreen() {
   const router = useRouter();

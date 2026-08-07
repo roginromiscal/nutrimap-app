@@ -1,59 +1,45 @@
-import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
-import * as Location from "expo-location";
+import { useFocusEffect, useNavigation } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Animated,
-  Dimensions,
-  Image,
-  PanResponder,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    Animated,
+    Dimensions,
+    Image,
+    PanResponder,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
-import MapView, { Marker } from "react-native-maps";
-import { useMap } from "./map-context";
+import MapView from "react-native-maps";
+import { pingSensor } from "../../lib/database/espSensor";
+import { useMap } from "../../lib/mapContext";
 
 const { height } = Dimensions.get("window");
+const PING_INTERVAL_MS = 4000;
 
-export default function DetailsScreen() {
-  const [location, setLocation] = useState(null);
+const STATUS = {
+  checking: { color: "#B0B0B0", label: "Checking…" },
+  online: { color: "#4CAF50", label: "Online" },
+  offline: { color: "#E53935", label: "Offline" },
+};
+
+export default function SensorsScreen() {
   const slideAnimation = useRef(new Animated.Value(height)).current;
   const panResponder = useRef(null);
   const scrollRef = useRef(null);
   const isAtTop = useRef(true);
+  const mapRef = useRef(null);
 
   const navigation = useNavigation();
-  const route = useRoute();
-  const { mapRef, mapRegion, setMapRegion } = useMap();
+  const { location, initialRegion } = useMap();
+  const [mapRegion, setMapRegion] = useState(null);
+  const [deviceStatus, setDeviceStatus] = useState("checking");
 
-  /* =====================
-     GET USER LOCATION
-  ===================== */
   useEffect(() => {
-    const getLocation = async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") return;
-
-      const currentLocation = await Location.getCurrentPositionAsync({});
-      const { latitude, longitude } = currentLocation.coords;
-
-      const region = {
-        latitude,
-        longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      };
-
-      setLocation(region);
-
-      if (!mapRegion && mapRef.current) {
-        mapRef.current.animateToRegion(region);
-      }
-    };
-
-    getLocation();
-  }, []);
+    if (location) {
+      mapRef.current?.animateToRegion(location, 500);
+    }
+  }, [location]);
 
   /* =====================
      BOTTOM SHEET DRAG
@@ -103,35 +89,39 @@ export default function DetailsScreen() {
     }, [])
   );
 
+  /* =====================
+     DEVICE CONNECTIVITY
+  ===================== */
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+
+      const checkStatus = async () => {
+        const online = await pingSensor();
+        if (!cancelled) setDeviceStatus(online ? "online" : "offline");
+      };
+
+      setDeviceStatus("checking");
+      checkStatus();
+      const interval = setInterval(checkStatus, PING_INTERVAL_MS);
+
+      return () => {
+        cancelled = true;
+        clearInterval(interval);
+      };
+    }, [])
+  );
+
   return (
     <View style={styles.container}>
-      {/* ================= MAP ================= */}
       <MapView
         ref={mapRef}
         style={styles.map}
+        initialRegion={location || initialRegion}
         mapType="hybrid"
-        initialRegion={
-          mapRegion || {
-            latitude: 8.482,
-            longitude: 124.647,
-            latitudeDelta: 0.5,
-            longitudeDelta: 0.5,
-          }
-        }
         showsUserLocation
-        onRegionChange={setMapRegion}
-      >
-        {location && (
-          <Marker
-            coordinate={{
-              latitude: parseFloat(location.latitude),
-              longitude: parseFloat(location.longitude),
-            }}
-            title="Your Location"
-            pinColor="blue"
-          />
-        )}
-      </MapView>
+        onRegionChangeComplete={setMapRegion}
+      />
 
       {/* ================= BOTTOM SHEET ================= */}
       <Animated.View
@@ -174,8 +164,15 @@ export default function DetailsScreen() {
               </View>
 
               <View style={styles.sensorStatus}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>Online</Text>
+                <View
+                  style={[
+                    styles.statusDot,
+                    { backgroundColor: STATUS[deviceStatus].color },
+                  ]}
+                />
+                <Text style={styles.statusText}>
+                  {STATUS[deviceStatus].label}
+                </Text>
               </View>
             </View>
           </View>
@@ -299,7 +296,6 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: "#4CAF50",
     marginBottom: 4,
   },
 

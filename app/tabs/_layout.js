@@ -1,118 +1,128 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs, useNavigation } from "expo-router";
+import { Tabs } from "expo-router";
+import * as Location from "expo-location";
 import { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
-import MapView, { Marker } from "react-native-maps";
 
-import { initDatabase } from "../database/initDB";
-import { MapProvider, useMap } from "./map-context";
-
-/* Background map + tabs + floating scan button */
+import { initDatabase } from "../../lib/database/initDB";
+import { watchAndSyncScans } from "../../lib/database/syncScans";
+import { MapProvider, useMap } from "../../lib/mapContext";
 
 function TabsContent() {
-  const { mapRef, location, initialRegion } = useMap();
-  const navigation = useNavigation();
+  const { setLocation } = useMap();
+
+  // Prime the shared location cache once when the tabs mount, so individual
+  // screens' own maps can use it immediately without each re-prompting for
+  // permission.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") return;
+
+        const current = await Location.getCurrentPositionAsync({});
+        setLocation({
+          latitude: current.coords.latitude,
+          longitude: current.coords.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+      } catch (err) {
+        console.warn("Location unavailable:", err);
+      }
+    })();
+  }, []);
 
   return (
-    <>
-      {/* 🔵 Persistent Background Map */}
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        initialRegion={initialRegion}
-        mapType="hybrid"
-        showsUserLocation
-      >
-        {location && (
-          <Marker
-            coordinate={{
-              latitude: location.latitude,
-              longitude: location.longitude,
-            }}
-            title="Your Location"
-            pinColor="blue"
-          />
-        )}
-      </MapView>
-
-      {/* 🧭 Tabs Overlay */}
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarShowLabel: false,
-          tabBarStyle: styles.tabBar,
-          tabBarActiveTintColor: "#fff",
-          tabBarInactiveTintColor: "#B7CDBF",
-          sceneContainerStyle: {
-            backgroundColor: "transparent",
-          },
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarShowLabel: false,
+        tabBarStyle: styles.tabBar,
+        tabBarActiveTintColor: "#fff",
+        tabBarInactiveTintColor: "#B7CDBF",
+      }}
+    >
+      <Tabs.Screen
+        name="home"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <Ionicons
+              name="home"
+              size={26}
+              color={focused ? "#fff" : "#B7CDBF"}
+            />
+          ),
         }}
-      >
-        <Tabs.Screen
-          name="home"
-          options={{
-            tabBarIcon: ({ focused }) => (
-              <Ionicons
-                name="home"
-                size={26}
-                color={focused ? "#fff" : "#B7CDBF"}
-              />
-            ),
-          }}
-        />
+      />
 
-        <Tabs.Screen
-          name="scanned_area"
-          options={{
-            tabBarIcon: ({ focused }) => (
-              <Ionicons
-                name="search"
-                size={26}
-                color={focused ? "#fff" : "#B7CDBF"}
-              />
-            ),
-          }}
-        />
+      <Tabs.Screen
+        name="scanned_area"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <Ionicons
+              name="search"
+              size={26}
+              color={focused ? "#fff" : "#B7CDBF"}
+            />
+          ),
+        }}
+      />
 
-        <Tabs.Screen
-          name="sensors"
-          options={{
-            tabBarIcon: ({ focused }) => (
-              <Ionicons
-                name="radio-outline"
-                size={26}
-                color={focused ? "#fff" : "#B7CDBF"}
-              />
-            ),
-          }}
-        />
+      <Tabs.Screen
+        name="sensors"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <Ionicons
+              name="radio-outline"
+              size={26}
+              color={focused ? "#fff" : "#B7CDBF"}
+            />
+          ),
+        }}
+      />
 
-        <Tabs.Screen
-          name="settings"
-          options={{
-            tabBarIcon: ({ focused }) => (
-              <Ionicons
-                name="settings-outline"
-                size={26}
-                color={focused ? "#fff" : "#B7CDBF"}
-              />
-            ),
-          }}
-        />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <Ionicons
+              name="settings-outline"
+              size={26}
+              color={focused ? "#fff" : "#B7CDBF"}
+            />
+          ),
+        }}
+      />
 
-        {/* 🚫 Hidden details tab */}
-        <Tabs.Screen name="details" options={{ href: null }} />
-      </Tabs>
-
-    </>
+      {/* 🚫 Hidden details tab */}
+      <Tabs.Screen name="details" options={{ href: null }} />
+    </Tabs>
   );
 }
 
 export default function TabsLayout() {
   useEffect(() => {
-    initDatabase().catch((err) =>
-      console.error("DB init failed:", err)
-    );
+    let unsubscribeSync;
+    let cancelled = false;
+
+    initDatabase()
+      .then(() => {
+        // Push any scans that were saved locally while offline, and keep
+        // watching so reconnecting later triggers another sync pass.
+        const unsubscribe = watchAndSyncScans();
+        if (cancelled) {
+          unsubscribe();
+        } else {
+          unsubscribeSync = unsubscribe;
+        }
+      })
+      .catch((err) => console.error("DB init failed:", err));
+
+    return () => {
+      cancelled = true;
+      unsubscribeSync?.();
+    };
   }, []);
 
   return (
@@ -124,15 +134,10 @@ export default function TabsLayout() {
   );
 }
 
-/* ❗ STYLES ARE UNTOUCHED */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     position: "relative",
-  },
-  map: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 0,
   },
   tabBar: {
     position: "absolute",
@@ -147,23 +152,6 @@ const styles = StyleSheet.create({
     zIndex: 5,
     shadowColor: "#000",
     shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  scanButtonContainer: {
-    position: "absolute",
-    bottom: 45,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    zIndex: 10,
-  },
-  scanButton: {
-    backgroundColor: "white",
-    padding: 25,
-    borderRadius: 50,
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
     shadowOffset: { width: 0, height: 2 },
   },
 });

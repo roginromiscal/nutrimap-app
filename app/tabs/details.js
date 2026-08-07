@@ -1,22 +1,21 @@
-import * as Location from "expo-location";
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Animated,
-  Dimensions,
-  Image,
-  PanResponder,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Animated,
+    Dimensions,
+    PanResponder,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
-import { getUserScans } from "../database/getUserScans";
-import { recommendCrop } from "../database/recommendCrop";
-import { auth } from "./firebaseConfig";
-import { useMap } from "./map-context";
+import { getUserScans } from "../../lib/database/getUserScans";
+import { recommendCrop } from "../../lib/database/recommendCrop";
+import { auth } from "../../lib/firebase";
+import { useMap } from "../../lib/mapContext";
 
 const { height } = Dimensions.get("window");
 
@@ -24,17 +23,33 @@ export default function DetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  const [location, setLocation] = useState(null);
   const [selectedArea, setSelectedArea] = useState(null);
   const [scannedAreas, setScannedAreas] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
+  const [mapRegion, setMapRegion] = useState(null);
 
   const slideAnimation = useRef(new Animated.Value(height)).current;
   const panResponder = useRef(null);
   const scrollRef = useRef(null);
   const isAtTop = useRef(true);
+  const mapRef = useRef(null);
 
-  const { mapRef, mapRegion, setMapRegion } = useMap();
+  const { location, initialRegion } = useMap();
+
+  const selectArea = useCallback((area) => {
+    setSelectedArea(area);
+
+    if (area?.latitude && area?.longitude) {
+      const region = {
+        latitude: parseFloat(area.latitude),
+        longitude: parseFloat(area.longitude),
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+      setMapRegion(region);
+      mapRef.current?.animateToRegion(region, 500);
+    }
+  }, []);
 
   /* -------------------- SAFE PARSE -------------------- */
   useEffect(() => {
@@ -47,19 +62,7 @@ export default function DetailsScreen() {
 
       if (!parsed) return;
 
-      setSelectedArea(parsed);
-
-      if (parsed.latitude && parsed.longitude) {
-        const region = {
-          latitude: parseFloat(parsed.latitude),
-          longitude: parseFloat(parsed.longitude),
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        };
-        setMapRegion(region);
-        mapRef.current?.animateToRegion(region, 500);
-      }
-
+      selectArea(parsed);
     } catch (err) {
       console.log("Parse error:", err);
     }
@@ -74,37 +77,28 @@ export default function DetailsScreen() {
     }, [])
   );
 
-  /* -------------------- LOCATION -------------------- */
+  // Follow the device's location once it resolves, but only if no specific
+  // area is already focused (from params or a tapped marker).
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") return;
-
-      const current = await Location.getCurrentPositionAsync({});
-      const region = {
-        latitude: current.coords.latitude,
-        longitude: current.coords.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      };
-      setLocation(region);
-
-      if (!mapRegion) setMapRegion(region);
-    })();
-  }, []);
+    if (location && !mapRegion) {
+      mapRef.current?.animateToRegion(location, 500);
+    }
+  }, [location]);
 
   /* -------------------- NORMALIZE DATA -------------------- */
   const normalizeSoil = (area) => {
     if (!area) return null;
 
-    return {
-      nitrogen: area.nitrogen ?? area.n ?? 0,
-      phosphorus: area.phosphorus ?? area.p ?? 0,
-      potassium: area.potassium ?? area.k ?? 0,
-      temperature: area.temperature ?? 0,
-      moisture: area.moisture ?? 0,
-      ph: area.ph ?? 0,
+    const normalized = {
+      nitrogen: Number(area.nitrogen) || Number(area.n) || 0,
+      phosphorus: Number(area.phosphorus) || Number(area.p) || 0,
+      potassium: Number(area.potassium) || Number(area.k) || 0,
+      temperature: Number(area.temperature) || 0,
+      moisture: Number(area.moisture) || 0,
+      ph: Number(area.ph) || 0,
     };
+    console.log('📊 Soil normalized:', normalized);
+    return normalized;
   };
 
   const soil = normalizeSoil(selectedArea);
@@ -178,15 +172,18 @@ const soilData = [
   return (
     <View style={styles.container}>
       <MapView
+        // react-native-maps on Android doesn't always remove a marker's
+        // native view when it's deleted from this array — keying on the
+        // current set of scan ids forces the map to remount when a scan
+        // is added or deleted, so stale pins can't linger.
+        key={scannedAreas.map((a) => a.id).join("-")}
         ref={mapRef}
         style={styles.map}
-        initialRegion={mapRegion || location}
+        initialRegion={mapRegion || location || initialRegion}
         mapType="hybrid"
         showsUserLocation
         onRegionChangeComplete={setMapRegion}
       >
-        {location && <Marker coordinate={location} pinColor="blue" />}
-
         {scannedAreas.map(
           (area) =>
             area.latitude &&
@@ -199,14 +196,7 @@ const soilData = [
                 }}
                 title={area.title}
                 pinColor="green"
-                onPress={() =>
-                  router.push({
-                    pathname: "/details",
-                    params: {
-                      selectedArea: JSON.stringify(area),
-                    },
-                  })
-                }
+                onPress={() => selectArea(area)}
               />
             )
         )}
@@ -291,10 +281,9 @@ const soilData = [
                 {recommendations.length > 0 ? (
                   recommendations.map((rec, i) => (
                     <View key={i} style={styles.cropCard}>
-                      <Image
-                        source={{ uri: "https://via.placeholder.com/80" }}
-                        style={styles.cropImage}
-                      />
+                      <View style={styles.cropImage}>
+                        <Ionicons name="leaf" size={36} color="#4CAF50" />
+                      </View>
                       <View style={styles.cropInfo}>
                         <Text style={styles.cropName}>
                           {i + 1}. {rec.crop}
@@ -540,6 +529,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginRight: 12,
     backgroundColor: "#E8E8E8",
+    alignItems: "center",
+    justifyContent: "center",
   },
   cropInfo: {
     flex: 1,

@@ -6,7 +6,7 @@ export default function RootLayout() {
       <Stack.Screen name="screens/WelcomeScreen" options={{ headerShown: false }} />
       <Stack.Screen name="screens/LoginScreen" options={{ headerShown: false }} />
       <Stack.Screen name="screens/RegisterScreen" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="tabs" options={{ headerShown: false }} />
     </Stack>
   );
 }

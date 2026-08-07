@@ -1,6 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import * as Location from "expo-location";
+import { useFocusEffect, useNavigation } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,22 +11,17 @@ import {
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 
-import { getUserScans } from "../database/getUserScans";
-import { insertMockScan } from "../database/insertScan";
-import { auth } from "./firebaseConfig";
-import { useMap } from "./map-context";
+import { getUserScans } from "../../lib/database/getUserScans";
+import { insertScan } from "../../lib/database/insertScan";
+import { auth } from "../../lib/firebase";
+import { useMap } from "../../lib/mapContext";
 
 export default function HomeScreen() {
   const navigation = useNavigation();
   const mapRef = useRef(null);
 
-  const {
-    mapRegion,
-    setMapRegion,
-    location,
-    setLocation,
-    initialRegion,
-  } = useMap();
+  const { location, initialRegion } = useMap();
+  const [mapRegion, setMapRegion] = useState(null);
 
   const [scannedAreas, setScannedAreas] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -44,37 +38,30 @@ export default function HomeScreen() {
     }, [])
   );
 
+  // initialRegion only applies on the MapView's first render, so once the
+  // real GPS fix arrives (after the permission check + lookup completes)
+  // we explicitly animate the camera to it.
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") return;
-
-      const current = await Location.getCurrentPositionAsync({});
-      const region = {
-        latitude: current.coords.latitude,
-        longitude: current.coords.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      };
-
-      setLocation(region);
-      setMapRegion(region);
-      mapRef.current?.animateToRegion(region, 300);
-    })();
-  }, []);
+    if (location) {
+      mapRef.current?.animateToRegion(location, 500);
+    }
+  }, [location]);
 
   return (
     <View style={styles.container}>
       <MapView
+        // react-native-maps on Android doesn't always remove a marker's
+        // native view when it's deleted from this array — keying on the
+        // current set of scan ids forces the map to remount when a scan
+        // is added or deleted, so stale pins can't linger.
+        key={scannedAreas.map((a) => a.id).join("-")}
         ref={mapRef}
         style={styles.map}
-        initialRegion={mapRegion || initialRegion}
+        initialRegion={location || initialRegion}
         mapType="hybrid"
         showsUserLocation
         onRegionChangeComplete={setMapRegion}
       >
-        {location && <Marker coordinate={location} pinColor="blue" />}
-
         {scannedAreas.map(
           (area) =>
             area.latitude &&
@@ -87,11 +74,11 @@ export default function HomeScreen() {
                 }}
                 title={area.title}
                 pinColor="green"
-              onPress={() =>
-                navigation.navigate("details", {
-                  selectedArea: JSON.stringify(area), // ✅ ALWAYS STRING
-                })
-              }
+                onPress={() =>
+                  navigation.navigate("details", {
+                    selectedArea: JSON.stringify(area),
+                  })
+                }
               />
             )
         )}
@@ -103,11 +90,8 @@ export default function HomeScreen() {
           disabled={isScanning}
           onPress={async () => {
             setIsScanning(true);
-            const inserted = await new Promise((resolve) =>
-              insertMockScan(resolve)
-            );
-
-            if (inserted) {
+            try {
+              const inserted = await insertScan();
               await loadScans(); // ✅ IMPORTANT FIX
 
               Alert.alert("Scan saved", "Area scanned successfully", [
@@ -120,8 +104,14 @@ export default function HomeScreen() {
                 },
                 { text: "OK" },
               ]);
+            } catch (err) {
+              Alert.alert(
+                "Scan failed",
+                err.message || "Something went wrong while reading the sensor."
+              );
+            } finally {
+              setIsScanning(false);
             }
-            setIsScanning(false);
           }}
         >
           {isScanning ? (

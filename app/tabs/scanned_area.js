@@ -1,4 +1,3 @@
-import * as Location from "expo-location";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -15,16 +14,16 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
-import { useMap } from "./map-context";
+import { useMap } from "../../lib/mapContext";
 
 const { height } = Dimensions.get("window");
 
 // SQLite helpers
-import { deleteScan } from "../database/deleteScan";
-import { getUserScans } from "../database/getUserScans";
-import { updateScanTitle } from "../database/updateScanTitle";
+import { deleteScan } from "../../lib/database/deleteScan";
+import { getUserScans } from "../../lib/database/getUserScans";
+import { updateScanTitle } from "../../lib/database/updateScanTitle";
 
-import { auth } from "./firebaseConfig";
+import { auth } from "../../lib/firebase";
 
 export default function ScannedAreaScreen() {
   const router = useRouter();
@@ -36,15 +35,16 @@ export default function ScannedAreaScreen() {
 
 
   const [sheetVisible, setSheetVisible] = useState(true); // ✅ USED
-  const [location, setLocation] = useState(null);
   const [scannedAreas, setScannedAreas] = useState([]);
+  const [mapRegion, setMapRegion] = useState(null);
 
   // Rename modal
   const [renameVisible, setRenameVisible] = useState(false);
   const [renameText, setRenameText] = useState("");
   const [selectedArea, setSelectedArea] = useState(null);
 
-  const { mapRef, mapRegion, setMapRegion, initialRegion } = useMap();
+  const mapRef = useRef(null);
+  const { location, initialRegion } = useMap();
 
 
   // 🔄 Load scans
@@ -60,27 +60,19 @@ export default function ScannedAreaScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadScans();
-      setSheetVisible(true);            // ✅ ensure sheet visible
-      slideAnimation.setValue(0);       // ✅ reset position
+      loadScans(); // ✅ ensures fresh data
+      setSheetVisible(true);
+      slideAnimation.setValue(0);
     }, [])
   );
 
-  // 📍 Location
+  // Follow the device's location once it resolves, but only if the user
+  // hasn't already picked a specific scanned area to focus on.
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") return;
-
-      const current = await Location.getCurrentPositionAsync({});
-      setLocation({
-        latitude: current.coords.latitude,
-        longitude: current.coords.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      });
-    })();
-  }, []);
+    if (location && !mapRegion) {
+      mapRef.current?.animateToRegion(location, 500);
+    }
+  }, [location]);
 
   // 🧲 Bottom sheet drag
   useEffect(() => {
@@ -135,7 +127,7 @@ export default function ScannedAreaScreen() {
     router.push({
       pathname: "/tabs/details",
       params: {
-        selectedArea: JSON.stringify(area), // ✅ FULL OBJECT
+        selectedArea: JSON.stringify(area),
       },
     });
   };
@@ -182,14 +174,18 @@ export default function ScannedAreaScreen() {
   return (
     <View style={styles.container}>
       <MapView
+        // react-native-maps on Android doesn't always remove a marker's
+        // native view when it's deleted from this array — keying on the
+        // current set of scan ids forces the map to remount when a scan
+        // is added or deleted, so stale pins can't linger.
+        key={scannedAreas.map((a) => a.id).join("-")}
         ref={mapRef}
         style={styles.map}
-        initialRegion={mapRegion || initialRegion}
+        initialRegion={location || initialRegion}
         mapType="hybrid"
         showsUserLocation
+        onRegionChangeComplete={setMapRegion}
       >
-        {location && <Marker coordinate={location} pinColor="blue" />}
-
         {scannedAreas.map(
           (area) =>
             area.latitude &&
@@ -202,6 +198,7 @@ export default function ScannedAreaScreen() {
                 }}
                 title={area.title}
                 pinColor="green"
+                onPress={() => handleAreaSelect(area)}
               />
             )
         )}
