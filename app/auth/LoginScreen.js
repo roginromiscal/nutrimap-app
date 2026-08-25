@@ -34,10 +34,9 @@ export default function LoginScreen() {
 
   const router = useRouter();
 
-  // Auto login if already authenticated
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-
       if (isLoggingIn) return;
 
       if (user) {
@@ -47,14 +46,12 @@ export default function LoginScreen() {
           await signOut(auth);
         }
       }
-
     });
 
     return unsubscribe;
   }, [isLoggingIn]);
 
   const handleLogin = async () => {
-
     const cleanEmail = email.replace(/\s+/g, '');
 
     if (!cleanEmail || !password.trim()) {
@@ -62,34 +59,25 @@ export default function LoginScreen() {
       return;
     }
 
-    let loginSuccessful = false; // Flag to track success
+    let loginSuccessful = false;
 
     try {
-
       setLoading(true);
       setIsLoggingIn(true);
-
-      console.log("Attempting login with email:", cleanEmail); // Debug log
 
       const userCredential = await signInWithEmailAndPassword(
         auth,
         cleanEmail,
         password
       );
-
       const user = userCredential.user;
 
-      console.log("Login successful, user UID:", user.uid); // Debug log
-
       if (!user.emailVerified) {
-
         await signOut(auth);
-
         Alert.alert(
           "Email Not Verified",
           "Please verify your Gmail first. You can resend the verification email below."
         );
-
         return;
       }
 
@@ -97,43 +85,33 @@ export default function LoginScreen() {
         emailVerified: true
       });
 
-      loginSuccessful = true; // Mark login as successful
+      loginSuccessful = true;
       Alert.alert("Success", "Login successful!");
-
       router.replace('/tabs');
-
     } catch (error) {
-
-      if (!loginSuccessful) { // Only show error if login was not successful
+      if (!loginSuccessful) {
         let message = "Login failed. Please try again.";
 
         if (error.code === "auth/user-not-found") {
           message = "No account found with this email.";
-        }
-        else if (error.code === "auth/wrong-password") {
+        } else if (error.code === "auth/wrong-password") {
           message = "Incorrect password.";
-        }
-        else if (error.code === "auth/invalid-email") {
+        } else if (error.code === "auth/invalid-email") {
           message = "Invalid email format.";
-        }
-        else if (error.code === "auth/network-request-failed") {
+        } else if (error.code === "auth/network-request-failed") {
           message = "Internet connection required.";
         }
 
-        console.error("Login error:", error); // Debug log
+        console.error("Login error:", error);
         Alert.alert("Login Error", message);
       }
-
     } finally {
       setLoading(false);
       setIsLoggingIn(false);
     }
   };
 
-
-  // Resend Verification Email
   const handleResendVerification = async () => {
-
     const cleanEmail = email.replace(/\s+/g, '');
 
     if (!cleanEmail) {
@@ -142,7 +120,6 @@ export default function LoginScreen() {
     }
 
     try {
-
       if (!password) {
         Alert.alert(
           "Verification Email",
@@ -156,55 +133,42 @@ export default function LoginScreen() {
         cleanEmail,
         password
       );
-
       const user = userCredential.user;
 
       if (user.emailVerified) {
-
         Alert.alert(
           "Already Verified",
           "This email is already verified. You can log in."
         );
-
         await signOut(auth);
         return;
       }
 
       await sendEmailVerification(user);
-
       await signOut(auth);
 
       Alert.alert(
         "Verification Sent",
         "A new verification email has been sent. Please check your inbox or spam folder."
       );
-
     } catch (error) {
-
       let message = "Unable to resend verification email.";
 
       if (error.code === "auth/user-not-found") {
         message = "No account found with this email.";
-      }
-      else if (error.code === "auth/wrong-password") {
+      } else if (error.code === "auth/wrong-password") {
         message = "Incorrect password.";
-      }
-      else if (error.code === "auth/invalid-email") {
+      } else if (error.code === "auth/invalid-email") {
         message = "Invalid email format.";
-      }
-      else if (error.code === "auth/network-request-failed") {
+      } else if (error.code === "auth/network-request-failed") {
         message = "Internet connection required.";
       }
 
       Alert.alert("Resend Error", message);
-
     }
   };
 
-
-  // Forgot Password
   const handleForgotPassword = async () => {
-
     const cleanEmail = email.replace(/\s+/g, '');
 
     if (!cleanEmail) {
@@ -213,40 +177,32 @@ export default function LoginScreen() {
     }
 
     try {
-
       await sendPasswordResetEmail(auth, cleanEmail);
-
       Alert.alert(
         "Password Reset Sent",
         "A password reset link has been sent to your email."
       );
-
     } catch (error) {
-
       let message = "Unable to send reset email.";
 
       if (error.code === "auth/user-not-found") {
         message = "No account found with this email.";
-      }
-      else if (error.code === "auth/invalid-email") {
+      } else if (error.code === "auth/invalid-email") {
         message = "Invalid email format.";
-      }
-      else if (error.code === "auth/network-request-failed") {
+      } else if (error.code === "auth/network-request-failed") {
         message = "Internet connection required.";
       }
 
       Alert.alert("Reset Error", message);
-
     }
   };
 
 
   return (
     <SafeAreaView style={styles.container}>
-
       <TouchableOpacity
         style={styles.logoTouchable}
-        onPress={() => router.replace('/screens/WelcomeScreen')}
+        onPress={() => router.replace('/auth/WelcomeScreen')}
       >
         <Image
           source={require('../../assets/images/nutrimap-logo.png')}
@@ -255,11 +211,9 @@ export default function LoginScreen() {
       </TouchableOpacity>
 
       <ScrollView contentContainerStyle={styles.scrollContainer}>
-
         <Text style={styles.title}>Log in</Text>
 
         <Text style={styles.label}>Gmail Address</Text>
-
         <TextInput
           style={styles.input}
           autoCapitalize="none"
@@ -270,9 +224,7 @@ export default function LoginScreen() {
         />
 
         <Text style={styles.label}>Password</Text>
-
         <View style={styles.passwordContainer}>
-
           <TextInput
             style={styles.passwordInput}
             secureTextEntry={!passwordVisible}
@@ -280,17 +232,13 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
           />
-
-          <TouchableOpacity
-            onPress={() => setPasswordVisible(!passwordVisible)}
-          >
+          <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)}>
             <Ionicons
               name={passwordVisible ? 'eye-off' : 'eye'}
               size={20}
               color="#6B7280"
             />
           </TouchableOpacity>
-
         </View>
 
         <TouchableOpacity onPress={handleForgotPassword}>
@@ -312,10 +260,10 @@ export default function LoginScreen() {
         </View>
 
         <Text style={styles.footerText}>
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Text
             style={styles.signUpLink}
-            onPress={() => router.push('/screens/RegisterScreen')}
+            onPress={() => router.push('/auth/RegisterScreen')}
           >
             Sign up
           </Text>
@@ -323,20 +271,14 @@ export default function LoginScreen() {
 
         <Text style={styles.footerText}>
           Didn’t receive the verification email?{" "}
-          <Text
-            style={styles.signUpLink}
-            onPress={handleResendVerification}
-          >
+          <Text style={styles.signUpLink} onPress={handleResendVerification}>
             Resend
           </Text>
         </Text>
-
       </ScrollView>
-
     </SafeAreaView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF' },

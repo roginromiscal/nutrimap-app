@@ -14,40 +14,36 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
-import { useMap } from "../../lib/mapContext";
-
-const { height } = Dimensions.get("window");
-
-// SQLite helpers
 import { deleteScan } from "../../lib/database/deleteScan";
 import { getUserScans } from "../../lib/database/getUserScans";
 import { updateScanTitle } from "../../lib/database/updateScanTitle";
-
 import { auth } from "../../lib/firebase";
+import { useMap } from "../../lib/mapContext";
+import OfflineMapNotice from "../../components/OfflineMapNotice";
+import { useIsOnline } from "../../lib/useIsOnline";
+
+const { height } = Dimensions.get("window");
 
 export default function ScannedAreaScreen() {
   const router = useRouter();
 
   const scrollRef = useRef(null);
   const isAtTop = useRef(true);
-  const slideAnimation = useRef(new Animated.Value(height)).current;
-  const panResponder = useRef(null);
+  const [slideAnimation] = useState(() => new Animated.Value(height));
+  const [panHandlers, setPanHandlers] = useState(null);
 
-
-  const [sheetVisible, setSheetVisible] = useState(true); // ✅ USED
+  const [sheetVisible, setSheetVisible] = useState(true);
   const [scannedAreas, setScannedAreas] = useState([]);
   const [mapRegion, setMapRegion] = useState(null);
 
-  // Rename modal
   const [renameVisible, setRenameVisible] = useState(false);
   const [renameText, setRenameText] = useState("");
   const [selectedArea, setSelectedArea] = useState(null);
 
   const mapRef = useRef(null);
   const { location, initialRegion } = useMap();
+  const isOnline = useIsOnline();
 
-
-  // 🔄 Load scans
   const loadScans = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) {
@@ -60,23 +56,20 @@ export default function ScannedAreaScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadScans(); // ✅ ensures fresh data
+      loadScans();
       setSheetVisible(true);
       slideAnimation.setValue(0);
     }, [])
   );
 
-  // Follow the device's location once it resolves, but only if the user
-  // hasn't already picked a specific scanned area to focus on.
   useEffect(() => {
     if (location && !mapRegion) {
       mapRef.current?.animateToRegion(location, 500);
     }
   }, [location]);
 
-  // 🧲 Bottom sheet drag
   useEffect(() => {
-    panResponder.current = PanResponder.create({
+    const responder = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (e, g) =>
         Math.abs(g.dy) > Math.abs(g.dx) && g.dy > 5 && isAtTop.current,
@@ -94,12 +87,13 @@ export default function ScannedAreaScreen() {
           useNativeDriver: false,
         }).start(() => {
           if (shouldDismiss) {
-            setSheetVisible(false);        // ✅ hide sheet
-            router.replace("/tabs/home"); // ✅ go home
+            setSheetVisible(false);
+            router.replace("/tabs/home");
           }
         });
       },
     });
+    setPanHandlers(responder.panHandlers);
   }, []);
 
   const handleAreaSelect = (area) => {
@@ -133,7 +127,6 @@ export default function ScannedAreaScreen() {
   };
 
 
-  // 🗑 Delete
   const handleDelete = (area) => {
     Alert.alert("Delete Scanned Area", "Are you sure?", [
       { text: "Cancel", style: "cancel" },
@@ -148,7 +141,6 @@ export default function ScannedAreaScreen() {
     ]);
   };
 
-  // ✏ Rename
   const handleRename = (area) => {
     setSelectedArea(area);
     setRenameText(area.title);
@@ -174,10 +166,6 @@ export default function ScannedAreaScreen() {
   return (
     <View style={styles.container}>
       <MapView
-        // react-native-maps on Android doesn't always remove a marker's
-        // native view when it's deleted from this array — keying on the
-        // current set of scan ids forces the map to remount when a scan
-        // is added or deleted, so stale pins can't linger.
         key={scannedAreas.map((a) => a.id).join("-")}
         ref={mapRef}
         style={styles.map}
@@ -204,16 +192,17 @@ export default function ScannedAreaScreen() {
         )}
       </MapView>
 
-      {/* ✅ Bottom Sheet ONLY when visible */}
+      {!isOnline && <OfflineMapNotice />}
+
       {sheetVisible && (
         <Animated.View
           style={[styles.bottomSheet, { transform: [{ translateY: slideAnimation }] }]}
-          {...panResponder.current?.panHandlers}
+          {...panHandlers}
         >
           <ScrollView
             ref={scrollRef}
             style={styles.bottomSheetContent}
-            contentContainerStyle={{ paddingBottom: 80 }} // ✅ IMPORTANT
+            contentContainerStyle={{ paddingBottom: 80 }}
             onScroll={(e) => (isAtTop.current = e.nativeEvent.contentOffset.y <= 0)}
             scrollEventThrottle={16}
           >
@@ -266,7 +255,6 @@ export default function ScannedAreaScreen() {
         </Animated.View>
       )}
 
-      {/* Rename Modal (unchanged) */}
       <Modal visible={renameVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
@@ -291,9 +279,6 @@ export default function ScannedAreaScreen() {
     </View>
   );
 }
-
-
-
 
 const styles = StyleSheet.create({
   container: {
@@ -423,7 +408,7 @@ modalBox: {
   backgroundColor: "#FFFFFF",
   borderRadius: 12,
   padding: 20,
-  elevation: 10, // Android shadow
+  elevation: 10,
 },
 
 modalTitle: {
@@ -470,6 +455,4 @@ modalSaveText: {
   fontWeight: "bold",
 },
 });
-
-
 

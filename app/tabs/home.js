@@ -15,6 +15,8 @@ import { getUserScans } from "../../lib/database/getUserScans";
 import { insertScan } from "../../lib/database/insertScan";
 import { auth } from "../../lib/firebase";
 import { useMap } from "../../lib/mapContext";
+import OfflineMapNotice from "../../components/OfflineMapNotice";
+import { useIsOnline } from "../../lib/useIsOnline";
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -22,6 +24,7 @@ export default function HomeScreen() {
 
   const { location, initialRegion } = useMap();
   const [mapRegion, setMapRegion] = useState(null);
+  const isOnline = useIsOnline();
 
   const [scannedAreas, setScannedAreas] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -38,9 +41,6 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // initialRegion only applies on the MapView's first render, so once the
-  // real GPS fix arrives (after the permission check + lookup completes)
-  // we explicitly animate the camera to it.
   useEffect(() => {
     if (location) {
       mapRef.current?.animateToRegion(location, 500);
@@ -50,10 +50,6 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <MapView
-        // react-native-maps on Android doesn't always remove a marker's
-        // native view when it's deleted from this array — keying on the
-        // current set of scan ids forces the map to remount when a scan
-        // is added or deleted, so stale pins can't linger.
         key={scannedAreas.map((a) => a.id).join("-")}
         ref={mapRef}
         style={styles.map}
@@ -84,6 +80,8 @@ export default function HomeScreen() {
         )}
       </MapView>
 
+      {!isOnline && <OfflineMapNotice />}
+
       <View style={styles.scanButtonContainer}>
         <TouchableOpacity
           style={styles.scanButton}
@@ -92,14 +90,14 @@ export default function HomeScreen() {
             setIsScanning(true);
             try {
               const inserted = await insertScan();
-              await loadScans(); // ✅ IMPORTANT FIX
+              await loadScans();
 
               Alert.alert("Scan saved", "Area scanned successfully", [
                 {
                   text: "View",
                   onPress: () =>
                   navigation.navigate("details", {
-                    selectedArea: JSON.stringify(inserted), // ✅ FIX
+                    selectedArea: JSON.stringify(inserted),
                   }),
                 },
                 { text: "OK" },

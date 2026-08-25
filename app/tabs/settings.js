@@ -68,7 +68,7 @@ export default function SettingsScreen() {
     try {
       setLoadingLogout(true);
       await signOut(auth);
-      router.replace('/screens/WelcomeScreen');
+      router.replace('/auth/WelcomeScreen');
       Alert.alert('Logged out', 'You have been signed out successfully.');
     } catch (err) {
       Alert.alert('Logout failed', 'Unable to sign out. Please try again.');

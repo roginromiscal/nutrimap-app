@@ -16,14 +16,14 @@ export default function WelcomeScreen() {
 
       <TouchableOpacity
         style={[styles.buttonBase, styles.loginButton]}
-        onPress={() => router.push('/screens/LoginScreen')}
+        onPress={() => router.push('/auth/LoginScreen')}
       >
         <Text style={styles.loginText}>Login</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
         style={[styles.buttonBase, styles.signupButton]}
-        onPress={() => router.push('/screens/RegisterScreen')}
+        onPress={() => router.push('/auth/RegisterScreen')}
       >
         <Text style={styles.signupText}>Sign up</Text>
       </TouchableOpacity>
@@ -58,10 +58,9 @@ const styles = StyleSheet.create({
     marginBottom: 100,
   },
 
-  /* ✅ Shared button size */
   buttonBase: {
-    width: 260,          // SAME width for both
-    paddingVertical: 14, // SAME height for both
+    width: 260,
+    paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
     marginBottom: 30,

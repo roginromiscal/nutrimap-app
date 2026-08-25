@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
 import * as Location from "expo-location";
+import { Tabs } from "expo-router";
 import { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 
+import { ensureCropDatabase } from "../../lib/database/cropSetup";
 import { initDatabase } from "../../lib/database/initDB";
 import { watchAndSyncScans } from "../../lib/database/syncScans";
 import { MapProvider, useMap } from "../../lib/mapContext";
@@ -11,9 +12,6 @@ import { MapProvider, useMap } from "../../lib/mapContext";
 function TabsContent() {
   const { setLocation } = useMap();
 
-  // Prime the shared location cache once when the tabs mount, so individual
-  // screens' own maps can use it immediately without each re-prompting for
-  // permission.
   useEffect(() => {
     (async () => {
       try {
@@ -95,7 +93,6 @@ function TabsContent() {
         }}
       />
 
-      {/* 🚫 Hidden details tab */}
       <Tabs.Screen name="details" options={{ href: null }} />
     </Tabs>
   );
@@ -108,8 +105,6 @@ export default function TabsLayout() {
 
     initDatabase()
       .then(() => {
-        // Push any scans that were saved locally while offline, and keep
-        // watching so reconnecting later triggers another sync pass.
         const unsubscribe = watchAndSyncScans();
         if (cancelled) {
           unsubscribe();
@@ -118,6 +113,10 @@ export default function TabsLayout() {
         }
       })
       .catch((err) => console.error("DB init failed:", err));
+
+    ensureCropDatabase().catch((err) =>
+      console.error("Crop database setup failed:", err)
+    );
 
     return () => {
       cancelled = true;

@@ -34,7 +34,7 @@ export default function RegisterScreen() {
   const [emailError, setEmailError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // ✅ Email FORMAT validation only (existence is verified via email link)
+
   const validateEmail = (value) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -84,19 +84,15 @@ export default function RegisterScreen() {
     try {
       setLoading(true);
 
-      // 1️⃣ Create Firebase Auth account
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         cleanEmail,
         password
       );
-
       const user = userCredential.user;
 
-      // 2️⃣ Send verification email (THIS proves Gmail exists)
       await sendEmailVerification(user);
 
-      // 3️⃣ Save user profile (pending verification)
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         email: cleanEmail,
@@ -105,17 +101,15 @@ export default function RegisterScreen() {
         createdAt: new Date()
       });
 
-      // 4️⃣ Force logout until email is verified
       await signOut(auth);
 
-      // 5️⃣ Inform user clearly
       Alert.alert(
         "Verify Your Email",
         "A verification link has been sent to your Gmail account. Please verify your email before logging in.",
         [
           {
             text: "OK",
-            onPress: () => router.replace('/screens/LoginScreen')
+            onPress: () => router.replace('/auth/LoginScreen')
           }
         ]
       );
@@ -142,10 +136,9 @@ export default function RegisterScreen() {
   return (
     <View style={styles.container}>
 
-      {/* Logo → Welcome */}
       <TouchableOpacity
         style={styles.logoTouchable}
-        onPress={() => router.replace('/screens/WelcomeScreen')}
+        onPress={() => router.replace('/auth/WelcomeScreen')}
       >
         <Image
           source={require('../../assets/images/nutrimap-logo.png')}
@@ -157,7 +150,6 @@ export default function RegisterScreen() {
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-      {/* Email */}
       <Text style={styles.label}>Gmail Address</Text>
       <TextInput
         style={[
@@ -185,7 +177,6 @@ export default function RegisterScreen() {
         </Text>
       )}
 
-      {/* Password */}
       <Text style={styles.label}>Create a password</Text>
       <View style={styles.passwordContainer}>
         <TextInput
@@ -208,7 +199,6 @@ export default function RegisterScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Confirm Password */}
       <Text style={styles.label}>Confirm password</Text>
       <View style={styles.passwordContainer}>
         <TextInput
@@ -231,7 +221,6 @@ export default function RegisterScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Register Button */}
       <TouchableOpacity
         style={styles.registerButton}
         onPress={handleRegister}
@@ -242,25 +231,23 @@ export default function RegisterScreen() {
         </Text>
       </TouchableOpacity>
 
-      {/* Divider */}
       <View style={styles.dividerContainer}>
         <View style={styles.line} />
       </View>
 
-      {/* Footer */}
       <View style={styles.footerContainer}>
         <Text style={styles.footerText}>
           Already have an account?{' '}
           <Text
             style={styles.loginLink}
-            onPress={() => router.push('/screens/LoginScreen')}
+            onPress={() => router.push('/auth/LoginScreen')}
           >
             Log in
           </Text>
         </Text>
 
         <Text style={styles.footerText}>
-          Don't have a Gmail account?{' '}
+          Don&apos;t have a Gmail account?{' '}
           <Text
             style={styles.loginLink}
             onPress={() => Linking.openURL('https://accounts.google.com/signup')}

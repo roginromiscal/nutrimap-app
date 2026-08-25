@@ -2,20 +2,22 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-    Animated,
-    Dimensions,
-    PanResponder,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Dimensions,
+  PanResponder,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
+import OfflineMapNotice from "../../components/OfflineMapNotice";
 import { getUserScans } from "../../lib/database/getUserScans";
 import { recommendCrop } from "../../lib/database/recommendCrop";
 import { auth } from "../../lib/firebase";
 import { useMap } from "../../lib/mapContext";
+import { useIsOnline } from "../../lib/useIsOnline";
 
 const { height } = Dimensions.get("window");
 
@@ -26,15 +28,17 @@ export default function DetailsScreen() {
   const [selectedArea, setSelectedArea] = useState(null);
   const [scannedAreas, setScannedAreas] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
+  const [showAllCrops, setShowAllCrops] = useState(false);
   const [mapRegion, setMapRegion] = useState(null);
 
-  const slideAnimation = useRef(new Animated.Value(height)).current;
-  const panResponder = useRef(null);
+  const [slideAnimation] = useState(() => new Animated.Value(height));
+  const [panHandlers, setPanHandlers] = useState(null);
   const scrollRef = useRef(null);
   const isAtTop = useRef(true);
   const mapRef = useRef(null);
 
   const { location, initialRegion } = useMap();
+  const isOnline = useIsOnline();
 
   const selectArea = useCallback((area) => {
     setSelectedArea(area);
@@ -51,7 +55,6 @@ export default function DetailsScreen() {
     }
   }, []);
 
-  /* -------------------- SAFE PARSE -------------------- */
   useEffect(() => {
     try {
       let parsed = params.selectedArea;
@@ -62,13 +65,13 @@ export default function DetailsScreen() {
 
       if (!parsed) return;
 
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       selectArea(parsed);
     } catch (err) {
       console.log("Parse error:", err);
     }
   }, [params.selectedArea]);
 
-  /* -------------------- LOAD SCANS -------------------- */
   useFocusEffect(
     useCallback(() => {
       const uid = auth.currentUser?.uid ?? "local";
@@ -77,19 +80,17 @@ export default function DetailsScreen() {
     }, [])
   );
 
-  // Follow the device's location once it resolves, but only if no specific
-  // area is already focused (from params or a tapped marker).
+
   useEffect(() => {
     if (location && !mapRegion) {
       mapRef.current?.animateToRegion(location, 500);
     }
   }, [location]);
 
-  /* -------------------- NORMALIZE DATA -------------------- */
   const normalizeSoil = (area) => {
     if (!area) return null;
 
-    const normalized = {
+    return {
       nitrogen: Number(area.nitrogen) || Number(area.n) || 0,
       phosphorus: Number(area.phosphorus) || Number(area.p) || 0,
       potassium: Number(area.potassium) || Number(area.k) || 0,
@@ -97,13 +98,10 @@ export default function DetailsScreen() {
       moisture: Number(area.moisture) || 0,
       ph: Number(area.ph) || 0,
     };
-    console.log('📊 Soil normalized:', normalized);
-    return normalized;
   };
 
   const soil = normalizeSoil(selectedArea);
 
-  /* -------------------- RECOMMENDATIONS -------------------- */
   useEffect(() => {
     const load = async () => {
       if (!selectedArea) return;
@@ -132,18 +130,16 @@ export default function DetailsScreen() {
     load();
   }, [selectedArea]);
 
-  /* -------------------- GRAPH DATA (ONLY NPK) -------------------- */
-const soilData = [
-  { label: "N", value: Number(soil?.nitrogen || 0), color: "#4CAF50" },
-  { label: "P", value: Number(soil?.phosphorus || 0), color: "#2196F3" },
-  { label: "K", value: Number(soil?.potassium || 0), color: "#FF9800" },
-];
+  const soilData = [
+    { label: "N", value: Number(soil?.nitrogen || 0), color: "#4CAF50" },
+    { label: "P", value: Number(soil?.phosphorus || 0), color: "#2196F3" },
+    { label: "K", value: Number(soil?.potassium || 0), color: "#FF9800" },
+  ];
 
   const maxVal = Math.max(...soilData.map(d => d.value), 1);
 
-  /* -------------------- DRAG -------------------- */
   useEffect(() => {
-    panResponder.current = PanResponder.create({
+    const responder = PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (e, g) =>
         Math.abs(g.dy) > Math.abs(g.dx) && g.dy > 5 && isAtTop.current,
@@ -166,16 +162,12 @@ const soilData = [
         });
       },
     });
+    setPanHandlers(responder.panHandlers);
   }, []);
 
-  /* -------------------- UI -------------------- */
   return (
     <View style={styles.container}>
       <MapView
-        // react-native-maps on Android doesn't always remove a marker's
-        // native view when it's deleted from this array — keying on the
-        // current set of scan ids forces the map to remount when a scan
-        // is added or deleted, so stale pins can't linger.
         key={scannedAreas.map((a) => a.id).join("-")}
         ref={mapRef}
         style={styles.map}
@@ -202,7 +194,9 @@ const soilData = [
         )}
       </MapView>
 
-      <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnimation }] }]} {...panResponder.current?.panHandlers}>
+      {!isOnline && <OfflineMapNotice />}
+
+      <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnimation }] }]} {...panHandlers}>
         <ScrollView
           ref={scrollRef}
           style={styles.bottomSheetContent}
@@ -235,7 +229,6 @@ const soilData = [
                 </Text>
               </View>
 
-              {/* 📊 NPK GRAPH ONLY */}
               <View style={styles.chartContainer}>
                 <Text style={styles.chartTitle}>NPK Levels</Text>
 
@@ -243,7 +236,7 @@ const soilData = [
                   <View style={styles.barsDisplayContainer}>
                     {soilData.map((item, i) => {
                       const rawHeight = (item.value / maxVal) * 180;
-                      const h = Math.max(rawHeight, 10); // ✅ ensures visible bars
+                      const h = Math.max(rawHeight, 10);
 
                       return (
                         <View key={i} style={styles.barItemContainer}>
@@ -258,7 +251,6 @@ const soilData = [
                 </View>
               </View>
 
-              {/* 📋 OTHER DATA */}
               <View style={styles.propertiesContainer}>
                 <View style={styles.propertyRow}>
                   <Text style={styles.propertyLabel}>Moisture</Text>
@@ -274,26 +266,39 @@ const soilData = [
                 </View>
               </View>
 
-              {/* 🌱 CROPS */}
               <View style={styles.cropContainer}>
                 <Text style={styles.cropTitle}>Crop Recommendations</Text>
 
                 {recommendations.length > 0 ? (
-                  recommendations.map((rec, i) => (
-                    <View key={i} style={styles.cropCard}>
-                      <View style={styles.cropImage}>
-                        <Ionicons name="leaf" size={36} color="#4CAF50" />
+                  <>
+                    {(showAllCrops ? recommendations : recommendations.slice(0, 5)).map((rec, i) => (
+                      <View key={i} style={styles.cropCard}>
+                        <View style={styles.cropImage}>
+                          <Ionicons name="leaf" size={36} color="#4CAF50" />
+                        </View>
+                        <View style={styles.cropInfo}>
+                          <Text style={styles.cropName}>
+                            {i + 1}. {rec.crop}
+                          </Text>
+                          <Text style={styles.cropDescription}>
+                            Confidence: {rec.confidence}%
+                          </Text>
+                        </View>
                       </View>
-                      <View style={styles.cropInfo}>
-                        <Text style={styles.cropName}>
-                          {i + 1}. {rec.crop}
+                    ))}
+                    {recommendations.length > 5 && (
+                      <TouchableOpacity
+                        style={styles.seeMoreButton}
+                        onPress={() => setShowAllCrops((v) => !v)}
+                      >
+                        <Text style={styles.seeMoreText}>
+                          {showAllCrops
+                            ? "See less"
+                            : `See ${recommendations.length - 5} more`}
                         </Text>
-                        <Text style={styles.cropDescription}>
-                          Confidence: {rec.confidence}%
-                        </Text>
-                      </View>
-                    </View>
-                  ))
+                      </TouchableOpacity>
+                    )}
+                  </>
                 ) : (
                   <Text>No recommendations available</Text>
                 )}
@@ -311,13 +316,6 @@ const soilData = [
     </View>
   );
 }
-
-/* ⚠️ KEEP YOUR STYLES BELOW UNCHANGED */
-
-/* ⚠️ STYLES ARE UNTOUCHED BELOW */
-
-
-
 
 const styles = StyleSheet.create({
   container: {
@@ -506,6 +504,17 @@ const styles = StyleSheet.create({
   },
   cropContainer: {
     marginBottom: 20,
+  },
+  seeMoreButton: {
+    alignSelf: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginTop: 8,
+  },
+  seeMoreText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#1B5333",
   },
   cropTitle: {
     fontSize: 16,

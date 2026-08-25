@@ -1,10 +1,9 @@
 {
-  "name": "my-first-app",
+  "name": "nutrimap",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
     "start": "expo start --offline --clear",
-    "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --offline --clear --android",
     "ios": "expo start --offline --clear --ios",
     "web": "expo start --offline --clear --web",

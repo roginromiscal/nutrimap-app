@@ -13,6 +13,8 @@ import {
 import MapView from "react-native-maps";
 import { pingSensor } from "../../lib/database/espSensor";
 import { useMap } from "../../lib/mapContext";
+import OfflineMapNotice from "../../components/OfflineMapNotice";
+import { useIsOnline } from "../../lib/useIsOnline";
 
 const { height } = Dimensions.get("window");
 const PING_INTERVAL_MS = 4000;
@@ -24,8 +26,8 @@ const STATUS = {
 };
 
 export default function SensorsScreen() {
-  const slideAnimation = useRef(new Animated.Value(height)).current;
-  const panResponder = useRef(null);
+  const [slideAnimation] = useState(() => new Animated.Value(height));
+  const [panHandlers, setPanHandlers] = useState(null);
   const scrollRef = useRef(null);
   const isAtTop = useRef(true);
   const mapRef = useRef(null);
@@ -34,6 +36,7 @@ export default function SensorsScreen() {
   const { location, initialRegion } = useMap();
   const [mapRegion, setMapRegion] = useState(null);
   const [deviceStatus, setDeviceStatus] = useState("checking");
+  const isOnline = useIsOnline();
 
   useEffect(() => {
     if (location) {
@@ -41,11 +44,8 @@ export default function SensorsScreen() {
     }
   }, [location]);
 
-  /* =====================
-     BOTTOM SHEET DRAG
-  ===================== */
   useEffect(() => {
-    panResponder.current = PanResponder.create({
+    const responder = PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) =>
         Math.abs(g.dy) > Math.abs(g.dx) && g.dy > 5 && isAtTop.current,
 
@@ -69,11 +69,9 @@ export default function SensorsScreen() {
         }
       },
     });
+    setPanHandlers(responder.panHandlers);
   }, []);
 
-  /* =====================
-     ANIMATE ON FOCUS
-  ===================== */
   useFocusEffect(
     useCallback(() => {
       slideAnimation.setValue(0);
@@ -89,9 +87,6 @@ export default function SensorsScreen() {
     }, [])
   );
 
-  /* =====================
-     DEVICE CONNECTIVITY
-  ===================== */
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -123,13 +118,14 @@ export default function SensorsScreen() {
         onRegionChangeComplete={setMapRegion}
       />
 
-      {/* ================= BOTTOM SHEET ================= */}
+      {!isOnline && <OfflineMapNotice />}
+
       <Animated.View
         style={[
           styles.bottomSheet,
           { transform: [{ translateY: slideAnimation }] },
         ]}
-        {...panResponder.current?.panHandlers}
+        {...panHandlers}
       >
         <ScrollView
           ref={scrollRef}
@@ -139,7 +135,6 @@ export default function SensorsScreen() {
             isAtTop.current = e.nativeEvent.contentOffset.y <= 0;
           }}
         >
-          {/* ⬇️ TOP SPACING UNCHANGED */}
           <View style={styles.dragHandleContainer}>
             <View style={styles.dragHandle} />
           </View>
@@ -148,7 +143,6 @@ export default function SensorsScreen() {
             <Text style={styles.headerTitle}>Sensors</Text>
           </View>
 
-          {/* ================= SENSOR CARD ================= */}
           <View style={styles.sensorsContainer}>
             <View style={styles.sensorCard}>
               <Image
@@ -184,9 +178,6 @@ export default function SensorsScreen() {
   );
 }
 
-/* =====================
-        STYLES
-===================== */
 const styles = StyleSheet.create({
   container: {
     flex: 1,
