@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -31,19 +32,23 @@ export default function HomeScreen() {
   const [isScanning, setIsScanning] = useState(false);
 
   const handleScan = async () => {
-    const loadingTimer = new Promise((resolve) => setTimeout(resolve, 2000));
     setIsScanning(true);
 
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const loadingTimer = new Promise((resolve) => setTimeout(resolve, 2000));
     let inserted;
     let scanError;
     try {
-      [inserted] = await Promise.all([insertScan(), loadingTimer]);
+      inserted = await insertScan();
     } catch (err) {
       scanError = err;
-      await loadingTimer;
-    } finally {
-      setIsScanning(false);
     }
+    await loadingTimer;
+    setIsScanning(false);
 
     if (scanError) {
       const alertTitle =
@@ -135,7 +140,11 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {isScanning && (
+      <Modal
+        visible={isScanning}
+        animationType="fade"
+        onRequestClose={() => {}}
+      >
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#1B5333" />
           <Text style={styles.loadingTitle}>Scanning your area</Text>
@@ -143,7 +152,7 @@ export default function HomeScreen() {
             Reading soil data from your sensor...
           </Text>
         </View>
-      )}
+      </Modal>
     </View>
   );
 }
