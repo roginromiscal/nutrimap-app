@@ -6,6 +6,7 @@ import {
   Alert,
   Dimensions,
   StyleSheet,
+  Text,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -28,6 +29,48 @@ export default function HomeScreen() {
 
   const [scannedAreas, setScannedAreas] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
+
+  const handleScan = async () => {
+    const loadingTimer = new Promise((resolve) => setTimeout(resolve, 2000));
+    setIsScanning(true);
+
+    let inserted;
+    let scanError;
+    try {
+      [inserted] = await Promise.all([insertScan(), loadingTimer]);
+    } catch (err) {
+      scanError = err;
+      await loadingTimer;
+    } finally {
+      setIsScanning(false);
+    }
+
+    if (scanError) {
+      const alertTitle =
+        scanError.code === "ZERO_NPK_READING"
+          ? "No Soil Nutrient Readings"
+          : scanError.code === "BLUETOOTH_CONNECTION_FAILED"
+            ? "Bluetooth Connection Failed"
+            : "Scan Failed";
+      Alert.alert(
+        alertTitle,
+        scanError.message || "Something went wrong while reading the sensor.",
+      );
+      return;
+    }
+
+    await loadScans();
+    Alert.alert("Scan saved", "Area scanned successfully", [
+      {
+        text: "View",
+        onPress: () =>
+          navigation.navigate("details", {
+            selectedArea: JSON.stringify(inserted),
+          }),
+      },
+      { text: "OK" },
+    ]);
+  };
 
   const loadScans = async () => {
     const uid = auth.currentUser?.uid ?? "local";
@@ -86,45 +129,21 @@ export default function HomeScreen() {
         <TouchableOpacity
           style={styles.scanButton}
           disabled={isScanning}
-          onPress={async () => {
-            setIsScanning(true);
-            try {
-              const inserted = await insertScan();
-              await loadScans();
-
-              Alert.alert("Scan saved", "Area scanned successfully", [
-                {
-                  text: "View",
-                  onPress: () =>
-                    navigation.navigate("details", {
-                      selectedArea: JSON.stringify(inserted),
-                    }),
-                },
-                { text: "OK" },
-              ]);
-            } catch (err) {
-              const alertTitle =
-                err.code === "ZERO_NPK_READING"
-                  ? "No Soil Nutrient Readings"
-                  : err.code === "BLUETOOTH_CONNECTION_FAILED"
-                    ? "Bluetooth Connection Failed"
-                    : "Scan Failed";
-              Alert.alert(
-                alertTitle,
-                err.message || "Something went wrong while reading the sensor.",
-              );
-            } finally {
-              setIsScanning(false);
-            }
-          }}
+          onPress={handleScan}
         >
-          {isScanning ? (
-            <ActivityIndicator size="large" color="#1B5333" />
-          ) : (
-            <Ionicons name="scan-outline" size={30} color="#1B5333" />
-          )}
+          <Ionicons name="scan-outline" size={30} color="#1B5333" />
         </TouchableOpacity>
       </View>
+
+      {isScanning && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#1B5333" />
+          <Text style={styles.loadingTitle}>Scanning your area</Text>
+          <Text style={styles.loadingMessage}>
+            Reading soil data from your sensor...
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -146,5 +165,25 @@ const styles = StyleSheet.create({
     padding: 25,
     borderRadius: 50,
     elevation: 6,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.96)",
+    padding: 32,
+  },
+  loadingTitle: {
+    marginTop: 20,
+    color: "#1B5333",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  loadingMessage: {
+    marginTop: 8,
+    color: "#4B5563",
+    fontSize: 15,
+    textAlign: "center",
   },
 });
