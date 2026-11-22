@@ -142,15 +142,28 @@ export default function HomeScreen() {
 
       <Modal
         visible={isScanning}
+        transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => {}}
       >
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#1B5333" />
-          <Text style={styles.loadingTitle}>Scanning your area</Text>
-          <Text style={styles.loadingMessage}>
-            Reading soil data from your sensor...
-          </Text>
+        <View style={styles.loadingBackdrop}>
+          <View style={styles.loadingCard}>
+            <View style={styles.loadingIconBadge}>
+              <Ionicons name="scan-outline" size={32} color="#1B5333" />
+            </View>
+            <Text style={styles.loadingEyebrow}>LIVE SOIL SCAN</Text>
+            <Text style={styles.loadingTitle}>Scanning your area</Text>
+            <Text style={styles.loadingMessage}>
+              Keep your sensor nearby while we collect your soil readings.
+            </Text>
+            <View style={styles.loadingStatus}>
+              <ActivityIndicator size="small" color="#1B5333" />
+              <Text style={styles.loadingStatusText}>
+                Reading sensor data...
+              </Text>
+            </View>
+          </View>
         </View>
       </Modal>
     </View>
@@ -175,24 +188,71 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     elevation: 6,
   },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 20,
+  loadingBackdrop: {
+    flex: 1,
+    width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.96)",
-    padding: 32,
+    backgroundColor: "rgba(13, 30, 20, 0.48)",
+    paddingHorizontal: 24,
+  },
+  loadingCard: {
+    width: "100%",
+    maxWidth: 360,
+    alignItems: "center",
+    paddingHorizontal: 28,
+    paddingTop: 32,
+    paddingBottom: 28,
+    borderRadius: 28,
+    backgroundColor: "#FFFFFF",
+    elevation: 12,
+    shadowColor: "#102A1B",
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 20,
+  },
+  loadingIconBadge: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E8F3EC",
+  },
+  loadingEyebrow: {
+    marginTop: 20,
+    color: "#4A7B5B",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.6,
   },
   loadingTitle: {
-    marginTop: 20,
+    marginTop: 8,
     color: "#1B5333",
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "700",
+    textAlign: "center",
   },
   loadingMessage: {
-    marginTop: 8,
+    marginTop: 10,
     color: "#4B5563",
-    fontSize: 15,
+    fontSize: 14,
+    lineHeight: 21,
     textAlign: "center",
+  },
+  loadingStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 24,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: "#F1F7F3",
+  },
+  loadingStatusText: {
+    marginLeft: 9,
+    color: "#1B5333",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });
