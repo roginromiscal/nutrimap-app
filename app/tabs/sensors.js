@@ -11,9 +11,9 @@ import {
     View,
 } from "react-native";
 import MapView from "react-native-maps";
+import OfflineMapNotice from "../../components/OfflineMapNotice";
 import { pingSensor } from "../../lib/database/espSensor";
 import { useMap } from "../../lib/mapContext";
-import OfflineMapNotice from "../../components/OfflineMapNotice";
 import { useIsOnline } from "../../lib/useIsOnline";
 
 const { height } = Dimensions.get("window");
@@ -84,7 +84,7 @@ export default function SensorsScreen() {
       setTimeout(() => {
         scrollRef.current?.scrollTo({ y: 0, animated: true });
       }, 300);
-    }, [])
+    }, []),
   );
 
   useFocusEffect(
@@ -104,7 +104,7 @@ export default function SensorsScreen() {
         cancelled = true;
         clearInterval(interval);
       };
-    }, [])
+    }, []),
   );
 
   return (
@@ -153,7 +153,8 @@ export default function SensorsScreen() {
               <View style={styles.sensorInfo}>
                 <Text style={styles.sensorName}>7-in-1 NPK Sensor</Text>
                 <Text style={styles.sensorDesc}>
-                  Measures soil nutrients and conditions in real time.
+                  Connects to NutriMap-Sensor over Bluetooth Classic and reads
+                  soil nutrients and conditions in real time.
                 </Text>
               </View>
 

@@ -11,11 +11,11 @@ import {
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
 
+import OfflineMapNotice from "../../components/OfflineMapNotice";
 import { getUserScans } from "../../lib/database/getUserScans";
 import { insertScan } from "../../lib/database/insertScan";
 import { auth } from "../../lib/firebase";
 import { useMap } from "../../lib/mapContext";
-import OfflineMapNotice from "../../components/OfflineMapNotice";
 import { useIsOnline } from "../../lib/useIsOnline";
 
 export default function HomeScreen() {
@@ -38,7 +38,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       loadScans();
-    }, [])
+    }, []),
   );
 
   useEffect(() => {
@@ -76,7 +76,7 @@ export default function HomeScreen() {
                   })
                 }
               />
-            )
+            ),
         )}
       </MapView>
 
@@ -96,16 +96,22 @@ export default function HomeScreen() {
                 {
                   text: "View",
                   onPress: () =>
-                  navigation.navigate("details", {
-                    selectedArea: JSON.stringify(inserted),
-                  }),
+                    navigation.navigate("details", {
+                      selectedArea: JSON.stringify(inserted),
+                    }),
                 },
                 { text: "OK" },
               ]);
             } catch (err) {
+              const alertTitle =
+                err.code === "ZERO_NPK_READING"
+                  ? "No Soil Nutrient Readings"
+                  : err.code === "BLUETOOTH_CONNECTION_FAILED"
+                    ? "Bluetooth Connection Failed"
+                    : "Scan Failed";
               Alert.alert(
-                "Scan failed",
-                err.message || "Something went wrong while reading the sensor."
+                alertTitle,
+                err.message || "Something went wrong while reading the sensor.",
               );
             } finally {
               setIsScanning(false);

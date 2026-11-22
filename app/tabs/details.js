@@ -77,9 +77,8 @@ export default function DetailsScreen() {
       const uid = auth.currentUser?.uid ?? "local";
       getUserScans(uid).then(setScannedAreas);
       slideAnimation.setValue(0);
-    }, [])
+    }, []),
   );
-
 
   useEffect(() => {
     if (location && !mapRegion) {
@@ -113,14 +112,14 @@ export default function DetailsScreen() {
           return;
         }
 
-      const result = await recommendCrop({
-        n: soil.nitrogen,
-        p: soil.phosphorus,
-        k: soil.potassium,
-        temperature: soil.temperature,
-        moisture: soil.moisture,
-        ph: soil.ph,
-      });
+        const result = await recommendCrop({
+          n: soil.nitrogen,
+          p: soil.phosphorus,
+          k: soil.potassium,
+          temperature: soil.temperature,
+          moisture: soil.moisture,
+          ph: soil.ph,
+        });
         setRecommendations(result || []);
       } catch {
         setRecommendations([]);
@@ -130,13 +129,29 @@ export default function DetailsScreen() {
     load();
   }, [selectedArea]);
 
+  // ✅ Added `name` so the full nutrient name shows under each letter
   const soilData = [
-    { label: "N", value: Number(soil?.nitrogen || 0), color: "#4CAF50" },
-    { label: "P", value: Number(soil?.phosphorus || 0), color: "#2196F3" },
-    { label: "K", value: Number(soil?.potassium || 0), color: "#FF9800" },
+    {
+      label: "N",
+      name: "Nitrogen",
+      value: Number(soil?.nitrogen || 0),
+      color: "#4CAF50",
+    },
+    {
+      label: "P",
+      name: "Phosphorus",
+      value: Number(soil?.phosphorus || 0),
+      color: "#2196F3",
+    },
+    {
+      label: "K",
+      name: "Potassium",
+      value: Number(soil?.potassium || 0),
+      color: "#FF9800",
+    },
   ];
 
-  const maxVal = Math.max(...soilData.map(d => d.value), 1);
+  const maxVal = Math.max(...soilData.map((d) => d.value), 1);
 
   useEffect(() => {
     const responder = PanResponder.create({
@@ -190,17 +205,25 @@ export default function DetailsScreen() {
                 pinColor="green"
                 onPress={() => selectArea(area)}
               />
-            )
+            ),
         )}
       </MapView>
 
       {!isOnline && <OfflineMapNotice />}
 
-      <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: slideAnimation }] }]} {...panHandlers}>
+      <Animated.View
+        style={[
+          styles.bottomSheet,
+          { transform: [{ translateY: slideAnimation }] },
+        ]}
+        {...panHandlers}
+      >
         <ScrollView
           ref={scrollRef}
           style={styles.bottomSheetContent}
-          onScroll={e => (isAtTop.current = e.nativeEvent.contentOffset.y <= 0)}
+          onScroll={(e) =>
+            (isAtTop.current = e.nativeEvent.contentOffset.y <= 0)
+          }
           scrollEventThrottle={16}
         >
           <View style={styles.dragHandleContainer}>
@@ -240,10 +263,17 @@ export default function DetailsScreen() {
 
                       return (
                         <View key={i} style={styles.barItemContainer}>
-                          <View style={[styles.barItem, { height: h, backgroundColor: item.color }]}>
+                          <View
+                            style={[
+                              styles.barItem,
+                              { height: h, backgroundColor: item.color },
+                            ]}
+                          >
                             <Text style={styles.barText}>{item.value}</Text>
                           </View>
                           <Text style={styles.barLabel}>{item.label}</Text>
+                          {/* ✅ Full nutrient name under the letter */}
+                          <Text style={styles.barUnit}>({item.name})</Text>
                         </View>
                       );
                     })}
@@ -258,7 +288,9 @@ export default function DetailsScreen() {
                 </View>
                 <View style={styles.propertyRow}>
                   <Text style={styles.propertyLabel}>Temperature</Text>
-                  <Text style={styles.propertyValue}>{soil?.temperature}°C</Text>
+                  <Text style={styles.propertyValue}>
+                    {soil?.temperature}°C
+                  </Text>
                 </View>
                 <View style={styles.propertyRow}>
                   <Text style={styles.propertyLabel}>pH Level</Text>
@@ -271,7 +303,10 @@ export default function DetailsScreen() {
 
                 {recommendations.length > 0 ? (
                   <>
-                    {(showAllCrops ? recommendations : recommendations.slice(0, 5)).map((rec, i) => (
+                    {(showAllCrops
+                      ? recommendations
+                      : recommendations.slice(0, 5)
+                    ).map((rec, i) => (
                       <View key={i} style={styles.cropCard}>
                         <View style={styles.cropImage}>
                           <Ionicons name="leaf" size={36} color="#4CAF50" />
@@ -389,7 +424,7 @@ const styles = StyleSheet.create({
   chartArea: {
     flexDirection: "row",
     marginBottom: 12,
-    height: 240,
+    height: 250, // ✅ was 240, extra room for the name under each letter
   },
   chartYAxis: {
     width: 35,
@@ -434,7 +469,7 @@ const styles = StyleSheet.create({
   barItemContainer: {
     alignItems: "center",
     flex: 1,
-    maxWidth: 60,
+    maxWidth: 100, // ✅ was 60, too narrow for "(Phosphorus)"
   },
   barItem: {
     width: 45,
@@ -455,8 +490,8 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   barUnit: {
-    fontSize: 9,
-    color: "#999",
+    fontSize: 10, // ✅ was 9
+    color: "#333", // ✅ was #999, darker so it's readable like the reference image
     marginTop: 2,
   },
   legend: {

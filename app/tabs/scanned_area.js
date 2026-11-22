@@ -14,12 +14,12 @@ import {
   View,
 } from "react-native";
 import MapView, { Marker } from "react-native-maps";
+import OfflineMapNotice from "../../components/OfflineMapNotice";
 import { deleteScan } from "../../lib/database/deleteScan";
 import { getUserScans } from "../../lib/database/getUserScans";
 import { updateScanTitle } from "../../lib/database/updateScanTitle";
 import { auth } from "../../lib/firebase";
 import { useMap } from "../../lib/mapContext";
-import OfflineMapNotice from "../../components/OfflineMapNotice";
 import { useIsOnline } from "../../lib/useIsOnline";
 
 const { height } = Dimensions.get("window");
@@ -59,7 +59,7 @@ export default function ScannedAreaScreen() {
       loadScans();
       setSheetVisible(true);
       slideAnimation.setValue(0);
-    }, [])
+    }, []),
   );
 
   useEffect(() => {
@@ -126,7 +126,6 @@ export default function ScannedAreaScreen() {
     });
   };
 
-
   const handleDelete = (area) => {
     Alert.alert("Delete Scanned Area", "Are you sure?", [
       { text: "Cancel", style: "cancel" },
@@ -158,7 +157,11 @@ export default function ScannedAreaScreen() {
   const handleLongPress = (area) => {
     Alert.alert(area.title, "Choose an option", [
       { text: "Rename", onPress: () => handleRename(area) },
-      { text: "Delete", style: "destructive", onPress: () => handleDelete(area) },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => handleDelete(area),
+      },
       { text: "Cancel", style: "cancel" },
     ]);
   };
@@ -188,7 +191,7 @@ export default function ScannedAreaScreen() {
                 pinColor="green"
                 onPress={() => handleAreaSelect(area)}
               />
-            )
+            ),
         )}
       </MapView>
 
@@ -196,17 +199,21 @@ export default function ScannedAreaScreen() {
 
       {sheetVisible && (
         <Animated.View
-          style={[styles.bottomSheet, { transform: [{ translateY: slideAnimation }] }]}
+          style={[
+            styles.bottomSheet,
+            { transform: [{ translateY: slideAnimation }] },
+          ]}
           {...panHandlers}
         >
           <ScrollView
             ref={scrollRef}
             style={styles.bottomSheetContent}
             contentContainerStyle={{ paddingBottom: 80 }}
-            onScroll={(e) => (isAtTop.current = e.nativeEvent.contentOffset.y <= 0)}
+            onScroll={(e) =>
+              (isAtTop.current = e.nativeEvent.contentOffset.y <= 0)
+            }
             scrollEventThrottle={16}
           >
-
             <View style={styles.dragHandleContainer}>
               <View style={styles.dragHandle} />
             </View>
@@ -397,62 +404,61 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   modalOverlay: {
-  flex: 1,
-  backgroundColor: "rgba(0,0,0,0.45)",
-  justifyContent: "center",
-  alignItems: "center",
-},
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
 
-modalBox: {
-  width: "85%",
-  backgroundColor: "#FFFFFF",
-  borderRadius: 12,
-  padding: 20,
-  elevation: 10,
-},
+  modalBox: {
+    width: "85%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 20,
+    elevation: 10,
+  },
 
-modalTitle: {
-  fontSize: 16,
-  fontWeight: "bold",
-  color: "#1B5333",
-  marginBottom: 12,
-},
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#1B5333",
+    marginBottom: 12,
+  },
 
-modalInput: {
-  borderWidth: 1,
-  borderColor: "#D1D5DB",
-  borderRadius: 8,
-  paddingVertical: 10,
-  paddingHorizontal: 12,
-  fontSize: 14,
-  marginBottom: 20,
-  color: "#111827",
-},
+  modalInput: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    marginBottom: 20,
+    color: "#111827",
+  },
 
-modalActions: {
-  flexDirection: "row",
-  justifyContent: "flex-end",
-},
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
 
-modalButton: {
-  paddingVertical: 8,
-  paddingHorizontal: 12,
-},
+  modalButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
 
-modalCancelText: {
-  color: "#6B7280",
-  fontSize: 14,
-  marginRight: 10,
-},
+  modalCancelText: {
+    color: "#6B7280",
+    fontSize: 14,
+    marginRight: 10,
+  },
 
-modalSaveButton: {
-  marginLeft: 10,
-},
+  modalSaveButton: {
+    marginLeft: 10,
+  },
 
-modalSaveText: {
-  color: "#1B5333",
-  fontSize: 14,
-  fontWeight: "bold",
-},
+  modalSaveText: {
+    color: "#1B5333",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
 });
-

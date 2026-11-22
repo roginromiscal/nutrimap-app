@@ -6,10 +6,10 @@ Mobile app for scanning soil plots, pulling readings from an ESP32 NPK sensor, a
 
 ```bash
 npm install
-npx expo start
+npx expo run:android
 ```
 
-Scan the QR code with Expo Go, or press `a` / `i` to open an Android/iOS build.
+This creates and launches a native Android build with Bluetooth support. Expo Go does not include the Bluetooth module.
 
 ## Project layout
 
@@ -21,5 +21,7 @@ Scan the QR code with Expo Go, or press `a` / `i` to open an Android/iOS build.
 
 ## Notes
 
-- The sensor tab expects the phone to be connected to the ESP32's own Wi-Fi access point (`NutriMap-Sensor`) — it polls a fixed local IP, there's no discovery step.
+- The sensor uses Bluetooth Classic serial. On Android, enable Bluetooth and allow the app to find and pair with `NutriMap-Sensor` when prompted.
+- Bluetooth communication requires a native Android build; Expo Go does not include the Bluetooth module. Rebuild with `npx expo run:android` after installing dependencies.
+- The ESP32 firmware uses Classic Bluetooth SPP, which is not supported by this app on iOS.
 - Scans are written to SQLite first and synced to Firestore in the background once the device is back online.
