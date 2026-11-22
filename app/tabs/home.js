@@ -23,6 +23,7 @@ import { useIsOnline } from "../../lib/useIsOnline";
 export default function HomeScreen() {
   const navigation = useNavigation();
   const mapRef = useRef(null);
+  const scanAbortControllerRef = useRef(null);
 
   const { location, initialRegion } = useMap();
   const [mapRegion, setMapRegion] = useState(null);
@@ -31,24 +32,45 @@ export default function HomeScreen() {
   const [scannedAreas, setScannedAreas] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
 
-  const handleScan = async () => {
-    setIsScanning(true);
+  const cancelScan = () => scanAbortControllerRef.current?.abort();
 
-    await new Promise((resolve) => {
-      requestAnimationFrame(() => requestAnimationFrame(resolve));
-    });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  const handleScan = async () => {
+    if (scanAbortControllerRef.current) return;
+
+    const controller = new AbortController();
+    scanAbortControllerRef.current = controller;
+    setIsScanning(true);
 
     const loadingTimer = new Promise((resolve) => setTimeout(resolve, 2000));
     let inserted;
     let scanError;
+
     try {
-      inserted = await insertScan();
-    } catch (err) {
-      scanError = err;
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      });
+      if (controller.signal.aborted) return;
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (controller.signal.aborted) return;
+
+      try {
+        inserted = await insertScan({ signal: controller.signal });
+      } catch (err) {
+        if (!controller.signal.aborted && err.code !== "SCAN_CANCELLED") {
+          scanError = err;
+        }
+      }
+
+      if (controller.signal.aborted) return;
+      await loadingTimer;
+      if (controller.signal.aborted) return;
+    } finally {
+      if (scanAbortControllerRef.current === controller) {
+        scanAbortControllerRef.current = null;
+      }
+      setIsScanning(false);
     }
-    await loadingTimer;
-    setIsScanning(false);
 
     if (scanError) {
       const alertTitle =
@@ -145,24 +167,26 @@ export default function HomeScreen() {
         transparent
         animationType="fade"
         statusBarTranslucent
-        onRequestClose={() => {}}
+        onRequestClose={cancelScan}
       >
         <View style={styles.loadingBackdrop}>
           <View style={styles.loadingCard}>
-            <View style={styles.loadingIconBadge}>
-              <Ionicons name="scan-outline" size={32} color="#1B5333" />
-            </View>
-            <Text style={styles.loadingEyebrow}>LIVE SOIL SCAN</Text>
             <Text style={styles.loadingTitle}>Scanning your area</Text>
             <Text style={styles.loadingMessage}>
-              Keep your sensor nearby while we collect your soil readings.
+              Keep your sensor nearby while collecting soil readings.
             </Text>
-            <View style={styles.loadingStatus}>
-              <ActivityIndicator size="small" color="#1B5333" />
-              <Text style={styles.loadingStatusText}>
-                Reading sensor data...
-              </Text>
-            </View>
+            <ActivityIndicator
+              style={styles.loadingSpinner}
+              size="large"
+              color="#1B5333"
+            />
+            <TouchableOpacity
+              accessibilityRole="button"
+              style={styles.cancelScanButton}
+              onPress={cancelScan}
+            >
+              <Text style={styles.cancelScanButtonText}>Cancel scan</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -200,10 +224,9 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 360,
     alignItems: "center",
-    paddingHorizontal: 28,
-    paddingTop: 32,
-    paddingBottom: 28,
-    borderRadius: 28,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
+    borderRadius: 20,
     backgroundColor: "#FFFFFF",
     elevation: 12,
     shadowColor: "#102A1B",
@@ -211,48 +234,35 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     shadowRadius: 20,
   },
-  loadingIconBadge: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#E8F3EC",
-  },
-  loadingEyebrow: {
-    marginTop: 20,
-    color: "#4A7B5B",
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1.6,
-  },
   loadingTitle: {
-    marginTop: 8,
     color: "#1B5333",
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "700",
     textAlign: "center",
   },
   loadingMessage: {
-    marginTop: 10,
+    marginTop: 8,
     color: "#4B5563",
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 22,
     textAlign: "center",
   },
-  loadingStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 24,
-    paddingVertical: 11,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: "#F1F7F3",
+  loadingSpinner: {
+    marginTop: 22,
   },
-  loadingStatusText: {
-    marginLeft: 9,
-    color: "#1B5333",
-    fontSize: 13,
+  cancelScanButton: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    marginTop: 22,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    backgroundColor: "#FFFFFF",
+  },
+  cancelScanButtonText: {
+    color: "#374151",
+    fontSize: 15,
     fontWeight: "600",
   },
 });
